@@ -1,0 +1,58 @@
+# Xcode
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+*.xcworkspace/*
+!*.xcworkspace/contents.xcworkspacedata
+!*.xcworkspace/xcshareddata/
+
+# Build products
+build/
+DerivedData/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# CocoaPods
+Pods/
+!Podfile
+!Podfile.lock
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Carthage
+Carthage/Build/
+Carthage/Checkouts/
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# Code Signing
+*.mobileprovision
+*.p12
+*.cer
+
+# Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# OS files
+.DS_Store
+*.swp
+*.lock
+profile
+
+# Local configuration
+.env
+*.xcconfig
+!Config/*.xcconfig
+
+# User-specific
+xcuserdata/
+*.xcuserstate
