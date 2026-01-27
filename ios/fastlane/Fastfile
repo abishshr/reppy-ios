@@ -21,6 +21,13 @@ platform :ios do
 
   desc "Push a new beta build to TestFlight"
   lane :beta do
+    # Sync code signing with Match
+    match(
+      type: "appstore",
+      readonly: true,
+      app_identifier: ["com.abish.reppy", "com.abish.reppy.widget"]
+    )
+
     # Increment build number
     increment_build_number(
       xcodeproj: "Reppy.xcodeproj"
@@ -30,14 +37,15 @@ platform :ios do
     build_app(
       scheme: "Reppy",
       export_method: "app-store",
-      xcargs: "-allowProvisioningUpdates",
       export_options: {
         uploadBitcode: false,
         uploadSymbols: false,
         compileBitcode: false,
-        signingStyle: "automatic",
-        signingCertificate: "Apple Distribution",
-        teamID: "9M9375N2XL",
+        signingStyle: "manual",
+        provisioningProfiles: {
+          "com.abish.reppy" => "match AppStore com.abish.reppy",
+          "com.abish.reppy.widget" => "match AppStore com.abish.reppy.widget"
+        },
         manageAppVersionAndBuildNumber: false
       }
     )

@@ -1,0 +1,9 @@
+git_url("https://github.com/abishshr/ios-certificates")
+
+storage_mode("git")
+
+type("appstore")
+
+app_identifier(["com.abish.reppy", "com.abish.reppy.widget"])
+
+username("abishs@me.com")
