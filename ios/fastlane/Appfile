@@ -1,0 +1,8 @@
+app_identifier("com.abish.reppy") # The bundle identifier of your app
+apple_id("abishs@me.com") # Your Apple Developer Portal email address
+
+itc_team_id("127815831") # App Store Connect Team ID
+team_id("9M9375N2XL") # Developer Portal Team ID
+
+# For more information about the Appfile, see:
+#     https://docs.fastlane.tools/advanced/#appfile

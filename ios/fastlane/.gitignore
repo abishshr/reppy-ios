@@ -1,0 +1,25 @@
+# Fastlane specific
+*.ipa
+*.dSYM.zip
+*.app.dSYM.zip
+
+# Fastlane reports
+report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+
+# Deliver temporary files
+fastlane/Preview.html
+
+# Snapshot generated screenshots
+fastlane/screenshots
+
+# Scan temporary files
+fastlane/test_output
+
+# Fastlane.env
+.env.default
+
+# App Store Connect API key
+AuthKey_*.p8

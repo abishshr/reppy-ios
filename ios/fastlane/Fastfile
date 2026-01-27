@@ -1,0 +1,98 @@
+# This file contains the fastlane.tools configuration
+# You can find the documentation at https://docs.fastlane.tools
+#
+# For a list of all available actions, check out
+#
+#     https://docs.fastlane.tools/actions
+#
+
+default_platform(:ios)
+
+platform :ios do
+  # App Store Connect API Key
+  def api_key
+    app_store_connect_api_key(
+      key_id: ENV["APP_STORE_CONNECT_API_KEY_ID"],
+      issuer_id: ENV["APP_STORE_CONNECT_API_ISSUER_ID"],
+      key_content: ENV["APP_STORE_CONNECT_API_KEY"],
+      is_key_content_base64: false
+    )
+  end
+
+  desc "Push a new beta build to TestFlight"
+  lane :beta do
+    # Increment build number
+    increment_build_number(
+      xcodeproj: "Reppy.xcodeproj"
+    )
+
+    # Build the app
+    build_app(
+      scheme: "Reppy",
+      export_method: "app-store",
+      export_options: {
+        uploadBitcode: false,
+        uploadSymbols: false,
+        compileBitcode: false,
+        signingStyle: "automatic",
+        signingCertificate: "Apple Distribution",
+        teamID: "9M9375N2XL",
+        manageAppVersionAndBuildNumber: false
+      }
+    )
+
+    # Upload to TestFlight
+    upload_to_testflight(
+      api_key: api_key,
+      skip_waiting_for_build_processing: true,
+      skip_submission: true,
+      distribute_external: false,
+      notify_external_testers: false
+    )
+
+    # Success message
+    puts "✅ Build uploaded to TestFlight successfully!"
+    puts "Check App Store Connect in 5-10 minutes for processing status"
+  end
+
+  desc "Build and archive only (no upload)"
+  lane :build_only do
+    increment_build_number(
+      xcodeproj: "Reppy.xcodeproj"
+    )
+
+    build_app(
+      scheme: "Reppy",
+      export_method: "app-store",
+      skip_package_ipa: false,
+      export_options: {
+        uploadBitcode: false,
+        uploadSymbols: false,
+        compileBitcode: false,
+        signingStyle: "automatic",
+        signingCertificate: "Apple Distribution",
+        teamID: "9M9375N2XL"
+      }
+    )
+
+    puts "✅ Build completed! IPA location: #{lane_context[SharedValues::IPA_OUTPUT_PATH]}"
+  end
+
+  desc "Upload existing IPA to TestFlight"
+  lane :upload_only do |options|
+    ipa_path = options[:ipa] || ENV["IPA_PATH"]
+
+    if ipa_path.nil?
+      UI.user_error!("Please provide an IPA path: fastlane upload_only ipa:/path/to/app.ipa")
+    end
+
+    upload_to_testflight(
+      api_key: api_key,
+      ipa: ipa_path,
+      skip_waiting_for_build_processing: true,
+      skip_submission: true
+    )
+
+    puts "✅ IPA uploaded to TestFlight successfully!"
+  end
+end
