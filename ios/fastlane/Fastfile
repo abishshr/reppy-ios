@@ -11,11 +11,9 @@ default_platform(:ios)
 platform :ios do
   # App Store Connect API Key
   def api_key
+    # Load from JSON file (same file used by Match)
     app_store_connect_api_key(
-      key_id: ENV["APP_STORE_CONNECT_API_KEY_ID"],
-      issuer_id: ENV["APP_STORE_CONNECT_API_ISSUER_ID"],
-      key_content: ENV["APP_STORE_CONNECT_API_KEY"],
-      is_key_content_base64: false
+      key_filepath: "./fastlane/app_store_connect_api_key.json"
     )
   end
 
