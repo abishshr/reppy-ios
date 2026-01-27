@@ -25,7 +25,6 @@ platform :ios do
     match(
       type: "appstore",
       readonly: is_ci,
-      api_key: api_key,
       app_identifier: ["com.abish.reppy", "com.abish.reppy.widget"]
     )
 
