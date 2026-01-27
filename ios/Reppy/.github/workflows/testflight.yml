@@ -3,7 +3,7 @@ name: Deploy to TestFlight
 on:
   push:
     branches: [main]
-  workflow_dispatch:
+  workflow_dispatch:  # Allow manual trigger
 
 jobs:
   deploy:
@@ -18,20 +18,9 @@ jobs:
         with:
           ruby-version: '3.2'
           bundler-cache: true
-          working-directory: ios
-
-      - name: Install XcodeGen
-        run: brew install xcodegen
-
-      - name: Generate Xcode Project
-        working-directory: ios
-        run: xcodegen generate
 
       - name: Install Fastlane
-        working-directory: ios
-        run: |
-          gem install bundler
-          bundle install || gem install fastlane
+        run: gem install fastlane
 
       - name: Build and Upload to TestFlight
         working-directory: ios
@@ -39,5 +28,4 @@ jobs:
           APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
-          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
         run: fastlane beta
