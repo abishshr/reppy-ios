@@ -36,12 +36,25 @@ jobs:
           gem install bundler
           bundle install || gem install fastlane
 
+      - name: Create App Store Connect API Key
+        working-directory: ios/fastlane
+        env:
+          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+          API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+        run: |
+          cat > app_store_connect_api_key.json <<EOF
+          {
+            "key_id": "$API_KEY_ID",
+            "issuer_id": "$API_ISSUER_ID",
+            "key": "$API_KEY",
+            "in_house": false
+          }
+          EOF
+
       - name: Build and Upload to TestFlight
         working-directory: ios
         env:
-          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
-          APP_STORE_CONNECT_API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
         run: fastlane beta

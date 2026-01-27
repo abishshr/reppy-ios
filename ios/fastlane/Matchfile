@@ -6,4 +6,4 @@ type("appstore")
 
 app_identifier(["com.abish.reppy", "com.abish.reppy.widget"])
 
-username("abishs@me.com")
+api_key_path("./fastlane/app_store_connect_api_key.json")

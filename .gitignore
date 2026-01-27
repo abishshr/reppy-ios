@@ -160,3 +160,4 @@ profile
 
 # App Store Connect API Key
 AuthKey_*.p8
+ios/fastlane/app_store_connect_api_key.json
