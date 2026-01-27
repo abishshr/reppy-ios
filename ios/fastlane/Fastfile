@@ -31,20 +31,37 @@ platform :ios do
       xcodeproj: "Reppy.xcodeproj"
     )
 
+    # Update code signing settings to use Match profiles
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: "Reppy.xcodeproj",
+      profile_name: "match AppStore com.abish.reppy",
+      code_sign_identity: "Apple Distribution",
+      targets: ["Reppy"]
+    )
+
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: "Reppy.xcodeproj",
+      profile_name: "match AppStore com.abish.reppy.widget",
+      code_sign_identity: "Apple Distribution",
+      targets: ["ReppyWidgetExtension"]
+    )
+
     # Build the app
     build_app(
       scheme: "Reppy",
       export_method: "app-store",
+      codesigning_identity: "Apple Distribution",
       export_options: {
         uploadBitcode: false,
         uploadSymbols: false,
         compileBitcode: false,
-        signingStyle: "manual",
+        manageAppVersionAndBuildNumber: false,
         provisioningProfiles: {
           "com.abish.reppy" => "match AppStore com.abish.reppy",
           "com.abish.reppy.widget" => "match AppStore com.abish.reppy.widget"
-        },
-        manageAppVersionAndBuildNumber: false
+        }
       }
     )
 
