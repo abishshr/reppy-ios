@@ -23,10 +23,10 @@ targets:
     type: application
     platform: iOS
     sources:
-      - path: Reppy
+      - path: ../Reppy
         excludes:
           - "**/.DS_Store"
-      - path: Shared
+      - path: ../Shared
         excludes:
           - "**/.DS_Store"
     dependencies:
@@ -35,30 +35,30 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.abish.reppy
-        INFOPLIST_FILE: Reppy/Resources/Info.plist
+        INFOPLIST_FILE: ../Reppy/Resources/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_VERSION: "5.9"
         TARGETED_DEVICE_FAMILY: "1"
         ENABLE_PREVIEWS: YES
-        CODE_SIGN_ENTITLEMENTS: Reppy/Resources/Reppy.entitlements
+        CODE_SIGN_ENTITLEMENTS: ../Reppy/Resources/Reppy.entitlements
 
   ReppyWidgetExtension:
     type: app-extension
     platform: iOS
     productName: ReppyWidgetExtension
     sources:
-      - path: ReppyWidget
+      - path: ../ReppyWidget
         excludes:
           - "**/.DS_Store"
-      - path: Shared
+      - path: ../Shared
         excludes:
           - "**/.DS_Store"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.abish.reppy.widget
-        INFOPLIST_FILE: ReppyWidget/Info.plist
+        INFOPLIST_FILE: ../ReppyWidget/Info.plist
         SWIFT_VERSION: "5.9"
-        CODE_SIGN_ENTITLEMENTS: ReppyWidget/ReppyWidget.entitlements
+        CODE_SIGN_ENTITLEMENTS: ../ReppyWidget/ReppyWidget.entitlements
         TARGETED_DEVICE_FAMILY: "1"
         SKIP_INSTALL: YES
 
@@ -67,18 +67,18 @@ targets:
     platform: watchOS
     deploymentTarget: "10.0"
     sources:
-      - path: ReppyWatch
+      - path: ../ReppyWatch
         excludes:
           - "**/.DS_Store"
-      - path: Shared
+      - path: ../Shared
         excludes:
           - "**/.DS_Store"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.abish.reppy.watch
-        INFOPLIST_FILE: ReppyWatch/Info.plist
+        INFOPLIST_FILE: ../ReppyWatch/Info.plist
         SWIFT_VERSION: "5.9"
-        CODE_SIGN_ENTITLEMENTS: ReppyWatch/ReppyWatch.entitlements
+        CODE_SIGN_ENTITLEMENTS: ../ReppyWatch/ReppyWatch.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         WATCHOS_DEPLOYMENT_TARGET: "10.0"
         TARGETED_DEVICE_FAMILY: "4"
