@@ -8,6 +8,7 @@ on:
 jobs:
   deploy:
     runs-on: macos-14
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -52,9 +53,30 @@ jobs:
           }
           EOF
 
+      - name: Setup Keychain for Code Signing
+        env:
+          KEYCHAIN_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+        run: |
+          # Create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+
+          # Set default keychain
+          security default-keychain -s build.keychain
+
+          # Unlock keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+
+          # Set keychain timeout to 1 hour and disable lock on sleep
+          security set-keychain-settings -t 3600 -u build.keychain
+
+          # Add keychain to search list
+          security list-keychains -d user -s build.keychain
+
       - name: Build and Upload to TestFlight
         working-directory: ios
         env:
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
           MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+          KEYCHAIN_NAME: build.keychain
+          KEYCHAIN_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
         run: fastlane beta

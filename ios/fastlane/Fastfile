@@ -20,11 +20,19 @@ platform :ios do
   desc "Push a new beta build to TestFlight"
   lane :beta do
     # Sync code signing with Match
-    match(
+    match_options = {
       type: "appstore",
       readonly: is_ci,
       app_identifier: ["com.abish.reppy", "com.abish.reppy.widget"]
-    )
+    }
+
+    # Add keychain configuration for CI environment
+    if is_ci && ENV["KEYCHAIN_NAME"] && ENV["KEYCHAIN_PASSWORD"]
+      match_options[:keychain_name] = ENV["KEYCHAIN_NAME"]
+      match_options[:keychain_password] = ENV["KEYCHAIN_PASSWORD"]
+    end
+
+    match(match_options)
 
     # Increment build number
     increment_build_number(
