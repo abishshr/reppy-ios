@@ -1,0 +1,33 @@
+{
+  "originHash" : "72945fe9f3d71a3b546d5d2df153345b4dc9e72c00b2fda349508223e1a88501",
+  "pins" : [
+    {
+      "identity" : "daily-client-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/daily-co/daily-client-ios.git",
+      "state" : {
+        "revision" : "14a5b65c826c526a0b9372a5d63d228a045ac4ef",
+        "version" : "0.35.0"
+      }
+    },
+    {
+      "identity" : "pipecat-client-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/pipecat-ai/pipecat-client-ios.git",
+      "state" : {
+        "revision" : "4041082a18b9cdb6d68e9eb33138630a91048a33",
+        "version" : "1.1.3"
+      }
+    },
+    {
+      "identity" : "pipecat-client-ios-daily",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/pipecat-ai/pipecat-client-ios-daily",
+      "state" : {
+        "revision" : "ea7d75a6a8b14bbbdad94d1b328af40be516f467",
+        "version" : "1.1.3"
+      }
+    }
+  ],
+  "version" : 3
+}
