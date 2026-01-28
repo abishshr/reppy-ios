@@ -78,5 +78,9 @@
         <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
+
+    <!-- Export Compliance -->
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
 </dict>
 </plist>
