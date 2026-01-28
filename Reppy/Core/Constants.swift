@@ -13,7 +13,7 @@ enum Constants {
         static let baseURL = "https://uncontagiously-unplastic-sabrina.ngrok-free.dev/api/v1"
         #endif
         #else
-        static let baseURL = "https://api.reppy.app/api/v1"
+        static let baseURL = "https://reppy-api.onrender.com/api/v1"
         #endif
 
         static let timeout: TimeInterval = 30

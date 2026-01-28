@@ -11,7 +11,10 @@ final class APIClient {
     init(keychainService: KeychainService) {
         self.baseURL = URL(string: Constants.API.baseURL)!
         self.keychainService = keychainService
-        self.session = URLSession.shared
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = Constants.API.timeout
+        config.timeoutIntervalForResource = Constants.API.timeout * 2
+        self.session = URLSession(configuration: config)
 
         self.decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase

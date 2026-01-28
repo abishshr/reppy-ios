@@ -57,6 +57,7 @@ struct AuthView: View {
                 .signInWithAppleButtonStyle(.black)
                 .frame(height: 50)
                 .padding(.horizontal, 40)
+                .disabled(viewModel.isLoading)
 
                 #if DEBUG
                 // Dev login for testing (DEBUG builds only)
