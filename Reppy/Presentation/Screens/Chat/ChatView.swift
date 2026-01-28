@@ -67,7 +67,7 @@ struct ChatViewContent: View {
                     }
                 }
             }
-            .navigationTitle("Coach")
+            .navigationTitle("Reppy")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -345,13 +345,19 @@ struct ChatViewContent: View {
                                 Task {
                                     await viewModel.confirmSuggestion(type: type, suggestionId: id)
                                 }
+                            },
+                            onApprovePlan: { plan in
+                                impactMedium.impactOccurred()
+                                Task {
+                                    await viewModel.approvePlan(plan)
+                                }
                             }
                         )
                         .id(message.id)
                     }
 
                     if viewModel.isLoading {
-                        ModernTypingIndicator()
+                        EnhancedTypingIndicator(message: viewModel.loadingMessage)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 12)
@@ -490,7 +496,7 @@ struct ChatViewContent: View {
 
                 // Text input
                 HStack(spacing: 8) {
-                    TextField("Message your coach...", text: $inputText, axis: .vertical)
+                    TextField("Message Reppy...", text: $inputText, axis: .vertical)
                         .textFieldStyle(.plain)
                         .lineLimit(1...5)
                         .focused($isTextFieldFocused)
@@ -800,6 +806,121 @@ struct SuggestionRow: View {
             )
         }
         .buttonStyle(BounceButtonStyle())
+    }
+}
+
+// MARK: - Enhanced Typing Indicator with Message
+
+struct EnhancedTypingIndicator: View {
+    let message: String?
+    @State private var animationPhase = 0.0
+    @State private var dotCount = 0
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            // Reppy avatar
+            ZStack {
+                Circle()
+                    .stroke(
+                        LinearGradient(
+                            colors: [.orange, .pink, .purple],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 2
+                    )
+                    .frame(width: 38, height: 38)
+
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [.orange, .red],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: 32, height: 32)
+                    .overlay(
+                        Image(systemName: "figure.run")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                    )
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                // Name tag
+                HStack(spacing: 6) {
+                    Text("Reppy")
+                        .font(.caption)
+                        .fontWeight(.bold)
+                        .foregroundColor(.orange)
+
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(.blue)
+                }
+
+                // Loading message or typing dots
+                if let message = message {
+                    HStack(spacing: 4) {
+                        Text(message)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+
+                        // Animated dots
+                        Text(String(repeating: ".", count: dotCount))
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .frame(width: 20, alignment: .leading)
+                    }
+                } else {
+                    // Bouncing dots
+                    HStack(spacing: 6) {
+                        ForEach(0..<3, id: \.self) { index in
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [.blue, .purple],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 10, height: 10)
+                                .offset(y: bounceOffset(for: index))
+                        }
+                    }
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(.secondarySystemBackground))
+                .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
+        )
+        .padding(.horizontal, 8)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: false)) {
+                animationPhase = 1.0
+            }
+            // Animate dots
+            Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { _ in
+                dotCount = (dotCount % 3) + 1
+            }
+        }
+    }
+
+    private func bounceOffset(for index: Int) -> CGFloat {
+        let delay = Double(index) * 0.15
+        let phase = (animationPhase + delay).truncatingRemainder(dividingBy: 1.0)
+        if phase < 0.5 {
+            return -6 * sin(phase * .pi * 2)
+        } else {
+            return 0
+        }
     }
 }
 

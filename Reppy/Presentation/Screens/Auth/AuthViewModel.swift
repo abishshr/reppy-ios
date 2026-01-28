@@ -8,23 +8,6 @@ final class AuthViewModel: ObservableObject {
 
     private let container = DependencyContainer.shared
 
-    // MARK: - Dev Login (Simulator Only)
-
-    func devLogin(appState: AppState) {
-        isLoading = true
-        errorMessage = nil
-
-        Task {
-            do {
-                let response = try await container.apiClient.devLogin()
-                appState.signIn(with: response)
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-            isLoading = false
-        }
-    }
-
     func handleSignInResult(
         _ result: Result<ASAuthorization, Error>,
         appState: AppState

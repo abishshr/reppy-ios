@@ -13,6 +13,9 @@ struct UserProfile: Codable, Equatable {
     var goals: [FitnessGoal]
     var dietStyle: DietStyle?
     var allergies: [String]
+    var injuries: [String]
+    var medicalConditions: [String]
+    var preferredIngredients: [String]
     var equipment: [String]
     var timezone: String?
     var dailyCalorieTarget: Int?
@@ -40,6 +43,9 @@ struct UserProfile: Codable, Equatable {
         goals: [FitnessGoal] = [],
         dietStyle: DietStyle? = nil,
         allergies: [String] = [],
+        injuries: [String] = [],
+        medicalConditions: [String] = [],
+        preferredIngredients: [String] = [],
         equipment: [String] = [],
         timezone: String? = nil,
         dailyCalorieTarget: Int? = nil,
@@ -65,6 +71,9 @@ struct UserProfile: Codable, Equatable {
         self.goals = goals
         self.dietStyle = dietStyle
         self.allergies = allergies
+        self.injuries = injuries
+        self.medicalConditions = medicalConditions
+        self.preferredIngredients = preferredIngredients
         self.equipment = equipment
         self.timezone = timezone
         self.dailyCalorieTarget = dailyCalorieTarget

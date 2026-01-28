@@ -56,6 +56,10 @@ struct ProfileTabView: View {
                     DataExportSection(onExport: { showExportData = true })
                         .padding(.horizontal)
 
+                    // Body Measurements
+                    BodyMeasurementsSection()
+                        .padding(.horizontal)
+
                     // About & Sign Out
                     AboutSection(onSignOut: { viewModel.showSignOutConfirmation = true })
                         .padding(.horizontal)
@@ -384,6 +388,45 @@ struct DataExportSection: View {
                 .padding()
                 .background(Color.blue)
                 .cornerRadius(12)
+            }
+        }
+        .padding()
+        .background(Color(.systemBackground))
+        .cornerRadius(16)
+        .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
+    }
+}
+
+// MARK: - Body Measurements Section
+
+struct BodyMeasurementsSection: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "ruler")
+                    .foregroundColor(.purple)
+                Text("Body Measurements")
+                    .font(.headline)
+            }
+
+            NavigationLink {
+                BodyMeasurementsView()
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("AR Body Scan")
+                            .fontWeight(.medium)
+                        Text("Track body fat % and measurements")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
         }
         .padding()

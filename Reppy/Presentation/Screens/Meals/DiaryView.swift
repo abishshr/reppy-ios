@@ -390,38 +390,296 @@ struct MealSection: View {
 
 struct DiaryMealRow: View {
     let meal: Meal
+    @State private var showDetail = false
+
+    private var displayName: String {
+        // Filter out empty, whitespace-only, or very short names (likely malformed)
+        let validItems = meal.items.filter { item in
+            let trimmed = item.name.trimmingCharacters(in: .whitespaces)
+            return trimmed.count >= 2  // Names should be at least 2 characters
+        }
+
+        if validItems.isEmpty {
+            // Try notes first, then meal type, then generic name
+            if let notes = meal.notes, !notes.isEmpty, notes != "Quick Add" {
+                return notes
+            }
+            if let mealType = meal.mealType {
+                return mealType.displayName
+            }
+            return "Logged Meal"
+        }
+
+        return validItems.map { $0.name }.joined(separator: ", ")
+    }
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(meal.items.map { $0.name }.joined(separator: ", "))
-                    .fontWeight(.medium)
-                    .lineLimit(1)
+        Button {
+            showDetail = true
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(displayName)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primary)
+                            .lineLimit(2)
 
-                Text(meal.loggedAt.timeString)
+                        Text(meal.loggedAt.timeString)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    // Calories badge
+                    HStack(spacing: 3) {
+                        Image(systemName: "flame.fill")
+                            .font(.system(size: 10))
+                        Text("\(meal.calories ?? 0)")
+                            .fontWeight(.bold)
+                    }
                     .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 4) {
-                Text("\(meal.calories ?? 0) cal")
-                    .fontWeight(.semibold)
-
-                HStack(spacing: 8) {
-                    Text("P:\(Int(meal.proteinG ?? 0))")
-                    Text("C:\(Int(meal.carbsG ?? 0))")
-                    Text("F:\(Int(meal.fatG ?? 0))")
+                    .foregroundColor(.orange)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.orange.opacity(0.12))
+                    .cornerRadius(6)
                 }
-                .font(.caption2)
+
+                // Macro row
+                HStack(spacing: 12) {
+                    DiaryMacroTag(label: "Protein", value: Int(meal.proteinG ?? 0), color: .blue)
+                    DiaryMacroTag(label: "Carbs", value: Int(meal.carbsG ?? 0), color: .green)
+                    DiaryMacroTag(label: "Fat", value: Int(meal.fatG ?? 0), color: .pink)
+
+                    if let fiber = meal.fiberGEst, fiber > 0 {
+                        DiaryMacroTag(label: "Fiber", value: Int(fiber), color: .mint)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(12)
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showDetail) {
+            DiaryMealDetailSheet(meal: meal)
+                .presentationDetents([.medium, .large])
+        }
+    }
+}
+
+// MARK: - Diary Macro Tag
+
+private struct DiaryMacroTag: View {
+    let label: String
+    let value: Int
+    let color: Color
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Text("\(value)g")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundColor(color)
+            Text(label)
+                .font(.system(size: 9))
                 .foregroundColor(.secondary)
+        }
+    }
+}
+
+// MARK: - Diary Meal Detail Sheet
+
+struct DiaryMealDetailSheet: View {
+    let meal: Meal
+    @Environment(\.dismiss) private var dismiss
+
+    private var hasVitamins: Bool {
+        (meal.vitaminAMcgEst ?? 0) > 0 || (meal.vitaminCMgEst ?? 0) > 0 ||
+        (meal.vitaminDMcgEst ?? 0) > 0 || (meal.vitaminB12McgEst ?? 0) > 0
+    }
+
+    private var hasMinerals: Bool {
+        (meal.calciumMgEst ?? 0) > 0 || (meal.ironMgEst ?? 0) > 0 ||
+        (meal.potassiumMgEst ?? 0) > 0 || (meal.magnesiumMgEst ?? 0) > 0
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    // Food items
+                    if !meal.items.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Items")
+                                .font(.headline)
+
+                            ForEach(meal.items) { item in
+                                HStack {
+                                    Text(item.name)
+                                        .font(.body)
+                                    Spacer()
+                                    if let qty = item.quantity, let unit = item.unit {
+                                        Text("\(Int(qty)) \(unit)")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        }
+                        .padding()
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(12)
+                    }
+
+                    // Macros
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Nutrition")
+                            .font(.headline)
+
+                        LazyVGrid(columns: [
+                            GridItem(.flexible()),
+                            GridItem(.flexible()),
+                            GridItem(.flexible()),
+                            GridItem(.flexible())
+                        ], spacing: 12) {
+                            DiaryNutrientCell(label: "Calories", value: "\(meal.calories ?? 0)", color: .orange, icon: "flame.fill")
+                            DiaryNutrientCell(label: "Protein", value: "\(Int(meal.proteinG ?? 0))g", color: .blue, icon: "p.circle.fill")
+                            DiaryNutrientCell(label: "Carbs", value: "\(Int(meal.carbsG ?? 0))g", color: .green, icon: "c.circle.fill")
+                            DiaryNutrientCell(label: "Fat", value: "\(Int(meal.fatG ?? 0))g", color: .pink, icon: "f.circle.fill")
+                        }
+                    }
+
+                    // Additional nutrients
+                    if (meal.fiberGEst ?? 0) > 0 || (meal.sugarGEst ?? 0) > 0 {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Details")
+                                .font(.headline)
+
+                            HStack(spacing: 16) {
+                                if let fiber = meal.fiberGEst, fiber > 0 {
+                                    DiaryNutrientCell(label: "Fiber", value: "\(Int(fiber))g", color: .mint, icon: "leaf.fill")
+                                }
+                                if let sugar = meal.sugarGEst, sugar > 0 {
+                                    DiaryNutrientCell(label: "Sugar", value: "\(Int(sugar))g", color: .purple, icon: "cube.fill")
+                                }
+                            }
+                        }
+                    }
+
+                    // Vitamins
+                    if hasVitamins {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Vitamins")
+                                .font(.headline)
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    if let v = meal.vitaminAMcgEst, v > 0 {
+                                        DiaryMicroBadge(name: "Vitamin A", value: "\(Int(v)) mcg")
+                                    }
+                                    if let v = meal.vitaminCMgEst, v > 0 {
+                                        DiaryMicroBadge(name: "Vitamin C", value: "\(Int(v)) mg")
+                                    }
+                                    if let v = meal.vitaminDMcgEst, v > 0 {
+                                        DiaryMicroBadge(name: "Vitamin D", value: String(format: "%.1f mcg", v))
+                                    }
+                                    if let v = meal.vitaminB12McgEst, v > 0 {
+                                        DiaryMicroBadge(name: "B12", value: String(format: "%.1f mcg", v))
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Minerals
+                    if hasMinerals {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Minerals")
+                                .font(.headline)
+
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    if let v = meal.calciumMgEst, v > 0 {
+                                        DiaryMicroBadge(name: "Calcium", value: "\(Int(v)) mg")
+                                    }
+                                    if let v = meal.ironMgEst, v > 0 {
+                                        DiaryMicroBadge(name: "Iron", value: String(format: "%.1f mg", v))
+                                    }
+                                    if let v = meal.potassiumMgEst, v > 0 {
+                                        DiaryMicroBadge(name: "Potassium", value: "\(Int(v)) mg")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle(meal.mealType?.displayName ?? "Meal")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
             }
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 12)
-        .background(Color(.secondarySystemBackground))
+    }
+}
+
+private struct DiaryNutrientCell: View {
+    let label: String
+    let value: String
+    let color: Color
+    let icon: String
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundColor(color)
+            Text(value)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(color.opacity(0.1))
         .cornerRadius(10)
+    }
+}
+
+private struct DiaryMicroBadge: View {
+    let name: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(name)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.caption)
+                .fontWeight(.medium)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color(.tertiarySystemFill))
+        .cornerRadius(8)
     }
 }
 

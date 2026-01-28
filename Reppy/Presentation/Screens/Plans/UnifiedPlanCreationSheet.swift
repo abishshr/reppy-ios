@@ -29,6 +29,63 @@ enum WorkoutScheduleType: String, CaseIterable {
     }
 }
 
+/// Manual meal entry for building custom meal plans
+struct ManualMealEntry: Identifiable {
+    let id = UUID()
+    var mealType: String  // breakfast, lunch, dinner, snack
+    var name: String
+    var ingredients: [ManualIngredient]
+
+    var totalEstimatedCalories: Int {
+        ingredients.reduce(0) { $0 + $1.estimatedCalories }
+    }
+}
+
+struct ManualIngredient: Identifiable {
+    let id = UUID()
+    var name: String
+    var quantity: Double
+    var unit: String  // g, oz, cups, pieces, etc.
+    var estimatedCalories: Int  // rough estimate, AI will refine
+
+    var displayString: String {
+        if unit == "pieces" || unit == "whole" {
+            return "\(Int(quantity)) \(name)"
+        }
+        return "\(Int(quantity))\(unit) \(name)"
+    }
+}
+
+/// AI analysis result for manual meal plans
+struct MealPlanAnalysis: Identifiable {
+    let id = UUID()
+    var totalCalories: Int
+    var totalProtein: Double
+    var totalCarbs: Double
+    var totalFat: Double
+
+    // Micronutrients
+    var fiber: Double?
+    var sodium: Double?
+    var sugar: Double?
+    var vitaminD: Double?
+    var iron: Double?
+    var calcium: Double?
+
+    // Analysis
+    var strengths: [String]
+    var improvements: [String]
+    var missingNutrients: [String]
+
+    // Special recommendations
+    var testosteroneBoostingFoods: [String]?  // For males
+    var hormoneBalancingFoods: [String]?  // For females
+
+    // Enhanced meal suggestions
+    var suggestedAdditions: [String]
+    var suggestedSubstitutions: [(original: String, replacement: String, reason: String)]
+}
+
 /// Where meals will come from
 enum MealSource: String, CaseIterable {
     case homeCoooked = "home_cooked"
@@ -71,12 +128,13 @@ struct UnifiedPlanCreationSheet: View {
 
     let planType: PlanType
 
-    init(planType: PlanType, apiClient: APIClient, chatRepository: ChatRepository) {
+    init(planType: PlanType, apiClient: APIClient, chatRepository: ChatRepository, appState: AppState?) {
         self.planType = planType
         _viewModel = StateObject(wrappedValue: PlanCreationViewModel(
             planType: planType,
             apiClient: apiClient,
-            chatRepository: chatRepository
+            chatRepository: chatRepository,
+            appState: appState
         ))
     }
 
@@ -136,6 +194,7 @@ class PlanCreationViewModel: ObservableObject {
     let planType: PlanType
     let apiClient: APIClient
     let chatRepository: ChatRepository
+    weak var appState: AppState?
 
     @Published var selectedMode: CreationMode = .quick
     @Published var isLoading = false
@@ -163,6 +222,21 @@ class PlanCreationViewModel: ObservableObject {
     @Published var mealCount: Int = 3
     @Published var selectedMealSource: MealSource = .homeCoooked
     @Published var preferredRestaurant: String = ""  // User can type their preferred restaurant
+    @Published var selectedIngredients: [String] = []  // Ingredients user wants to cook with
+    @Published var showIngredientPicker = false
+
+    // Meal plan duration and schedule options
+    @Published var mealPlanDays: Int = 7  // Number of days for meal plan
+    @Published var excludeWeekends: Bool = false  // Exclude Saturday and Sunday
+    @Published var excludedDays: Set<Int> = []  // 0 = Sunday, 6 = Saturday
+
+    // Manual meal entry
+    @Published var manualMeals: [ManualMealEntry] = []
+    @Published var showAddMealSheet = false
+    @Published var editingMealIndex: Int?
+    @Published var aiAnalysis: MealPlanAnalysis?
+    @Published var isAnalyzing = false
+    @Published var showAnalysisSheet = false
 
     // Manual mode
     @Published var manualName: String = ""
@@ -178,116 +252,111 @@ class PlanCreationViewModel: ObservableObject {
     @Published var foodSearchResults: [FoodSearchResult] = []
     @Published var selectedFoods: [FoodSearchResult] = []
 
-    init(planType: PlanType, apiClient: APIClient, chatRepository: ChatRepository) {
+    init(planType: PlanType, apiClient: APIClient, chatRepository: ChatRepository, appState: AppState?) {
         self.planType = planType
         self.apiClient = apiClient
         self.chatRepository = chatRepository
+        self.appState = appState
     }
 
     // MARK: - Quick Create
 
     func quickCreate() async {
-        quickGenerating = true
-        isLoading = true
+        let prompt: String
+        let displayMessage: String
 
-        do {
-            let prompt: String
-            if planType == .workout {
-                if workoutScheduleType == .daily {
-                    prompt = "Create a single workout for me to do today based on my profile and goals. Just create it without asking questions."
-                } else {
-                    prompt = "Create a workout plan for me based on my profile. Just create it without asking questions."
-                }
+        if planType == .workout {
+            if workoutScheduleType == .daily {
+                prompt = "Create a workout for today based on my profile and show it to me for approval."
+                displayMessage = "Create today's workout"
             } else {
-                prompt = "Create a meal plan for me based on my profile. Just create it without asking questions."
+                prompt = "Create a workout plan based on my profile and show it to me for approval."
+                displayMessage = "Create workout plan"
+            }
+        } else {
+            // Build excluded days text
+            var excludedDaysText = ""
+            if excludeWeekends {
+                excludedDaysText = " Exclude weekends."
+            } else if !excludedDays.isEmpty {
+                let dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+                let excludedNames = excludedDays.sorted().compactMap { $0 < dayNames.count ? dayNames[$0] : nil }
+                if !excludedNames.isEmpty {
+                    excludedDaysText = " Exclude: \(excludedNames.joined(separator: ", "))."
+                }
             }
 
-            _ = try await chatRepository.sendMessage(prompt, sessionId: nil, imageBase64: nil)
-            isCreated = true
-        } catch {
-            errorMessage = error.localizedDescription
-            showError = true
+            prompt = "Create a \(mealPlanDays)-day meal plan based on my profile.\(excludedDaysText) Show it to me for approval."
+            displayMessage = "Create \(mealPlanDays)-day meal plan"
         }
 
-        quickGenerating = false
-        isLoading = false
+        // Navigate to chat with the prompt - the chat will handle the conversation
+        appState?.navigateToChatWith(message: prompt, displayMessage: displayMessage)
+        isCreated = true
     }
 
     // MARK: - Customize Create
 
     func customizeCreate() async {
-        isLoading = true
+        let prompt: String
+        let displayMessage: String
 
-        do {
-            let prompt: String
-            if planType == .workout {
-                if workoutScheduleType == .daily {
-                    // Daily workout creation
-                    let muscleGroupsText = targetMuscleGroups.isEmpty
-                        ? "based on what I haven't trained recently"
-                        : targetMuscleGroups.joined(separator: ", ")
+        if planType == .workout {
+            if workoutScheduleType == .daily {
+                // Daily workout creation
+                let muscleGroupsText = targetMuscleGroups.isEmpty
+                    ? "based on what I haven't trained recently"
+                    : targetMuscleGroups.joined(separator: ", ")
 
-                    prompt = """
-                    Create a single workout for me to do today with these specifications:
-                    - Workout type: \(selectedWorkoutType)
-                    - Target muscle groups: \(muscleGroupsText)
-                    - Duration: approximately \(estimatedDuration) minutes
-                    - Difficulty: \(selectedDifficulty)
-                    - Goal: \(selectedGoal)
-                    Create it without asking questions. Include specific exercises with sets, reps, and rest times.
-                    """
-                } else {
-                    // Full plan creation
-                    prompt = """
-                    Create a workout plan with these specifications:
-                    - Goal: \(selectedGoal)
-                    - Duration: \(selectedDuration) weeks
-                    - Days per week: \(selectedDaysPerWeek)
-                    - Difficulty: \(selectedDifficulty)
-                    - Split type: \(selectedSplit)
-                    Create it without asking questions.
-                    """
-                }
+                prompt = "Create a \(selectedWorkoutType) workout for today targeting \(muscleGroupsText), ~\(estimatedDuration) min, \(selectedDifficulty) difficulty, goal: \(selectedGoal). Show it to me for approval."
+                displayMessage = "Create custom \(selectedWorkoutType) workout"
             } else {
-                var mealSourceInfo = ""
-                switch selectedMealSource {
-                case .homeCoooked:
-                    mealSourceInfo = "Home cooked meals only - provide recipes I can make at home"
-                case .fastFood:
-                    if !preferredRestaurant.isEmpty {
-                        mealSourceInfo = "Fast food meals from \(preferredRestaurant) ONLY - tell me exactly what to order that fits my goals. Use real menu items from this restaurant."
-                    } else {
-                        mealSourceInfo = "Fast food meals from popular chains near the user - tell me what to order that fits my goals. Suggest restaurants based on my location and preferences."
-                    }
-                case .restaurant:
-                    if !preferredRestaurant.isEmpty {
-                        mealSourceInfo = "Restaurant meals from \(preferredRestaurant) or similar restaurants - suggest specific dishes I could order"
-                    } else {
-                        mealSourceInfo = "Restaurant-style dishes I could order when eating out - suggest specific restaurants based on my location"
-                    }
-                case .mixed:
-                    mealSourceInfo = "Mix of home cooked and eating out options"
-                }
+                // Full plan creation
+                prompt = "Create a workout plan: \(selectedGoal) goal, \(selectedDuration) weeks, \(selectedDaysPerWeek) days/week, \(selectedDifficulty) difficulty, \(selectedSplit) split. Show it to me for approval."
+                displayMessage = "Create \(selectedDuration)-week workout plan"
+            }
+        } else {
+            var mealSourceInfo = ""
+            var ingredientInfo = ""
 
-                prompt = """
-                Create a meal plan with these specifications:
-                - Diet style: \(selectedDietStyle)
-                - Daily calories: \(dailyCalories)
-                - Meals per day: \(mealCount)
-                - Duration: 7 days
-                - Meal source: \(mealSourceInfo)
-                Create it without asking questions. For fast food/restaurant options, include the specific restaurant name and exact menu item to order.
-                """
+            switch selectedMealSource {
+            case .homeCoooked:
+                if !selectedIngredients.isEmpty {
+                    ingredientInfo = " using: \(selectedIngredients.joined(separator: ", "))"
+                }
+                mealSourceInfo = "home cooked\(ingredientInfo)"
+            case .fastFood:
+                if !preferredRestaurant.isEmpty {
+                    mealSourceInfo = "fast food from \(preferredRestaurant)"
+                } else {
+                    mealSourceInfo = "fast food"
+                }
+            case .restaurant:
+                if !preferredRestaurant.isEmpty {
+                    mealSourceInfo = "restaurant meals from \(preferredRestaurant)"
+                } else {
+                    mealSourceInfo = "restaurant meals"
+                }
+            case .mixed:
+                if !selectedIngredients.isEmpty {
+                    ingredientInfo = " (for home cooking use: \(selectedIngredients.joined(separator: ", ")))"
+                }
+                mealSourceInfo = "mixed home/restaurant\(ingredientInfo)"
             }
 
-            _ = try await chatRepository.sendMessage(prompt, sessionId: nil, imageBase64: nil)
-            isCreated = true
-        } catch {
-            errorMessage = error.localizedDescription
-            showError = true
+            // Build excluded days text for customize mode
+            var excludedDaysText = ""
+            if excludeWeekends {
+                excludedDaysText = ", weekdays only"
+            }
+
+            prompt = "Create a \(mealPlanDays)-day meal plan: \(selectedDietStyle), \(dailyCalories) cal/day, \(mealCount) meals/day, \(mealSourceInfo)\(excludedDaysText). Show it to me for approval."
+            displayMessage = "Create custom \(mealPlanDays)-day meal plan"
         }
 
-        isLoading = false
+        // Navigate to chat with the prompt - the chat will handle the conversation
+        appState?.navigateToChatWith(message: prompt, displayMessage: displayMessage)
+        isCreated = true
     }
 
     // MARK: - Search
@@ -320,6 +389,101 @@ class PlanCreationViewModel: ObservableObject {
             print("Food search error: \(error)")
             foodSearchResults = []
         }
+    }
+
+    // MARK: - Manual Meal Entry
+
+    func addManualMeal(_ meal: ManualMealEntry) {
+        manualMeals.append(meal)
+    }
+
+    func updateManualMeal(at index: Int, with meal: ManualMealEntry) {
+        guard index < manualMeals.count else { return }
+        manualMeals[index] = meal
+    }
+
+    func deleteManualMeal(at index: Int) {
+        guard index < manualMeals.count else { return }
+        manualMeals.remove(at: index)
+    }
+
+    func analyzeManualMeals() async {
+        guard !manualMeals.isEmpty else {
+            errorMessage = "Please add at least one meal to analyze"
+            showError = true
+            return
+        }
+
+        // Build meal description for AI
+        var mealDescription = "Here is my daily meal plan:\n\n"
+        for meal in manualMeals {
+            mealDescription += "**\(meal.mealType.capitalized): \(meal.name)**\n"
+            for ingredient in meal.ingredients {
+                mealDescription += "- \(ingredient.displayString)\n"
+            }
+            mealDescription += "\n"
+        }
+
+        let prompt = """
+        Analyze this meal plan and provide detailed nutritional feedback:
+
+        \(mealDescription)
+
+        Please provide:
+        1. **Estimated Macros**: Calculate total calories, protein (g), carbs (g), and fat (g) for the entire day
+        2. **Micronutrient Analysis**: Estimate fiber, sodium, sugar, vitamin D, iron, calcium, zinc, and magnesium levels
+        3. **Strengths**: What's good about this meal plan (2-3 points)
+        4. **Areas for Improvement**: What could be better (2-3 specific suggestions)
+        5. **Missing Nutrients**: Any key nutrients that are lacking
+        6. **For MALE users**: Provide a "T-Boost Score" (1-10) rating how testosterone-friendly this meal plan naturally is. Just score the existing meals, don't suggest testosterone-boosting additions.
+        7. **For FEMALE users**: ONLY if cycle tracking data exists, provide a "Cycle Sync Score" (1-10) rating how well the meals align with their current cycle phase. If no cycle data, skip this.
+        8. **Suggested Additions**: 2-3 foods to add to improve overall nutrition
+        9. **Suggested Substitutions**: Any swaps that would improve nutrition (format: "swap X for Y because Z")
+
+        Consider my profile, allergies, medical conditions, and fitness goals when analyzing.
+        Be specific with quantities and provide actionable advice.
+        """
+
+        // Navigate to chat with the prompt
+        appState?.navigateToChatWith(message: prompt, displayMessage: "Analyze my meal plan")
+        isCreated = true
+    }
+
+    func createMealPlanFromManual() async {
+        guard !manualMeals.isEmpty else {
+            errorMessage = "Please add at least one meal"
+            showError = true
+            return
+        }
+
+        // Build meal description
+        var mealDescription = ""
+        for meal in manualMeals {
+            mealDescription += "\(meal.mealType.capitalized) - \(meal.name): "
+            mealDescription += meal.ingredients.map { $0.displayString }.joined(separator: ", ")
+            mealDescription += "\n"
+        }
+
+        let prompt = """
+        I want to create a \(mealPlanDays)-day meal plan based on this template day I've designed:
+
+        \(mealDescription)
+
+        Please:
+        1. Use these meals as the foundation
+        2. Create variations for each day while keeping similar macros
+        3. Calculate and display accurate nutrition info for each meal including micronutrients (fiber, vitamins, minerals)
+        4. Consider my profile, allergies, injuries, and medical conditions
+        5. For MALE users: After creating the plan, provide a daily "T-Boost Score" (1-10) rating how testosterone-friendly each day naturally is. Just score, don't modify meals.
+        6. For FEMALE users: ONLY if cycle tracking data exists, provide a "Cycle Sync Score" (1-10) for each day. If no cycle data, skip this.
+        7. Add any missing micronutrients through strategic food choices
+
+        Show me the complete meal plan and ask for my confirmation before saving it.
+        """
+
+        // Navigate to chat with the prompt
+        appState?.navigateToChatWith(message: prompt, displayMessage: "Create \(mealPlanDays)-day plan from my template")
+        isCreated = true
     }
 
     // MARK: - Manual Create
@@ -478,6 +642,51 @@ struct QuickCreateTab: View {
                     .padding(.horizontal)
             }
 
+            // Meal plan duration options
+            if planType == .meal {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Number of days
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Plan Duration")
+                            .font(.subheadline.bold())
+
+                        HStack(spacing: 8) {
+                            ForEach([3, 5, 7, 14], id: \.self) { days in
+                                DayCountChip(
+                                    days: days,
+                                    isSelected: viewModel.mealPlanDays == days
+                                ) {
+                                    withAnimation(.spring(response: 0.2)) {
+                                        viewModel.mealPlanDays = days
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Exclude weekends toggle
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Exclude Weekends")
+                                .font(.subheadline.bold())
+                            Text("Skip Saturday & Sunday")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Toggle("", isOn: $viewModel.excludeWeekends)
+                            .labelsHidden()
+                            .tint(.green)
+                    }
+                }
+                .padding()
+                .background(Color(.systemGray6))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal)
+            }
+
             // What we'll use
             VStack(alignment: .leading, spacing: 12) {
                 Text("Based on your profile:")
@@ -613,6 +822,9 @@ struct CustomizeCreateTab: View {
             .padding()
         }
         .padding(.top)
+        .sheet(isPresented: $viewModel.showIngredientPicker) {
+            IngredientPickerSheet(selectedIngredients: $viewModel.selectedIngredients)
+        }
     }
 
     private var workoutOptions: some View {
@@ -903,6 +1115,119 @@ struct CustomizeCreateTab: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
 
+            // Ingredient selection (for home cooked or mixed)
+            if viewModel.selectedMealSource == .homeCoooked || viewModel.selectedMealSource == .mixed {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("What ingredients do you have?")
+                            .font(.subheadline.bold())
+                        Spacer()
+                        Text("Optional")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    // Selected ingredients chips
+                    if !viewModel.selectedIngredients.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(viewModel.selectedIngredients, id: \.self) { ingredient in
+                                    HStack(spacing: 4) {
+                                        Text(ingredient)
+                                            .font(.caption.weight(.medium))
+                                        Button {
+                                            withAnimation(.spring(response: 0.3)) {
+                                                viewModel.selectedIngredients.removeAll { $0 == ingredient }
+                                            }
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.caption)
+                                        }
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color.green)
+                                    .cornerRadius(16)
+                                }
+                            }
+                        }
+                    }
+
+                    // Tap to add ingredients button
+                    Button {
+                        viewModel.showIngredientPicker = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.title3)
+                            Text(viewModel.selectedIngredients.isEmpty ? "Tap to select ingredients" : "Add more ingredients")
+                                .font(.subheadline.weight(.medium))
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                        }
+                        .foregroundColor(.accentColor)
+                        .padding()
+                        .background(Color.accentColor.opacity(0.1))
+                        .cornerRadius(12)
+                    }
+
+                    if viewModel.selectedIngredients.isEmpty {
+                        Text("AI will suggest recipes based on common ingredients")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("AI will create recipes using your \(viewModel.selectedIngredients.count) selected ingredients")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    }
+                }
+                .padding(.horizontal)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            Divider()
+                .padding(.horizontal)
+
+            // Plan Duration
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Plan Duration")
+                    .font(.subheadline.bold())
+
+                HStack(spacing: 8) {
+                    ForEach([3, 5, 7, 14], id: \.self) { days in
+                        DayCountChip(
+                            days: days,
+                            isSelected: viewModel.mealPlanDays == days
+                        ) {
+                            withAnimation(.spring(response: 0.2)) {
+                                viewModel.mealPlanDays = days
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal)
+
+            // Exclude weekends toggle
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Exclude Weekends")
+                        .font(.subheadline.bold())
+                    Text("Skip Saturday & Sunday")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $viewModel.excludeWeekends)
+                    .labelsHidden()
+                    .tint(.green)
+            }
+            .padding(.horizontal)
+
             Divider()
                 .padding(.horizontal)
 
@@ -955,6 +1280,666 @@ struct ManualCreateTab: View {
     let planType: PlanType
 
     var body: some View {
+        if planType == .meal {
+            ManualMealEntryView(viewModel: viewModel)
+        } else {
+            ManualWorkoutEntryView(viewModel: viewModel)
+        }
+    }
+}
+
+// MARK: - Manual Meal Entry View
+
+struct ManualMealEntryView: View {
+    @ObservedObject var viewModel: PlanCreationViewModel
+    @State private var showAddMealSheet = false
+
+    var body: some View {
+        VStack(spacing: 16) {
+            // Header
+            VStack(spacing: 8) {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.green)
+
+                Text("Build Your Meal Plan")
+                    .font(.headline)
+
+                Text("Add meals with specific ingredients and quantities")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.top)
+
+            // Added meals list
+            if viewModel.manualMeals.isEmpty {
+                // Empty state
+                VStack(spacing: 16) {
+                    Spacer()
+
+                    Image(systemName: "fork.knife.circle")
+                        .font(.system(size: 60))
+                        .foregroundStyle(.secondary.opacity(0.5))
+
+                    Text("No meals added yet")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    Text("Tap the button below to add your first meal")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+            } else {
+                // Meals list
+                ScrollView {
+                    VStack(spacing: 12) {
+                        ForEach(Array(viewModel.manualMeals.enumerated()), id: \.element.id) { index, meal in
+                            ManualMealCard(meal: meal) {
+                                viewModel.editingMealIndex = index
+                                showAddMealSheet = true
+                            } onDelete: {
+                                withAnimation {
+                                    viewModel.deleteManualMeal(at: index)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+
+                // Summary
+                HStack(spacing: 20) {
+                    VStack {
+                        Text("\(viewModel.manualMeals.count)")
+                            .font(.title2.bold())
+                        Text("Meals")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Divider()
+                        .frame(height: 30)
+
+                    VStack {
+                        Text("\(totalIngredients)")
+                            .font(.title2.bold())
+                        Text("Ingredients")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Divider()
+                        .frame(height: 30)
+
+                    VStack {
+                        Text("~\(estimatedCalories)")
+                            .font(.title2.bold())
+                        Text("Est. Cal")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding()
+                .background(Color(.secondarySystemBackground))
+                .cornerRadius(12)
+                .padding(.horizontal)
+            }
+
+            Spacer()
+
+            // Action buttons
+            VStack(spacing: 12) {
+                // Add meal button
+                Button {
+                    viewModel.editingMealIndex = nil
+                    showAddMealSheet = true
+                } label: {
+                    HStack {
+                        Image(systemName: "plus.circle.fill")
+                        Text("Add Meal")
+                    }
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color(.systemGray6))
+                    .foregroundStyle(.primary)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+
+                if !viewModel.manualMeals.isEmpty {
+                    // Analyze with AI button
+                    Button {
+                        Task {
+                            await viewModel.analyzeManualMeals()
+                        }
+                    } label: {
+                        HStack {
+                            if viewModel.isAnalyzing {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Image(systemName: "wand.and.stars")
+                            }
+                            Text("Analyze with AI")
+                        }
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.purple)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .disabled(viewModel.isAnalyzing)
+
+                    // Create 7-day plan button
+                    Button {
+                        Task {
+                            await viewModel.createMealPlanFromManual()
+                        }
+                    } label: {
+                        HStack {
+                            if viewModel.isLoading {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Image(systemName: "sparkles")
+                            }
+                            Text("Create 7-Day Plan")
+                        }
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.green)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .disabled(viewModel.isLoading)
+                }
+            }
+            .padding()
+        }
+        .sheet(isPresented: $showAddMealSheet) {
+            AddMealSheet(viewModel: viewModel)
+        }
+    }
+
+    private var totalIngredients: Int {
+        viewModel.manualMeals.reduce(0) { $0 + $1.ingredients.count }
+    }
+
+    private var estimatedCalories: Int {
+        viewModel.manualMeals.reduce(0) { $0 + $1.totalEstimatedCalories }
+    }
+}
+
+// MARK: - Manual Meal Card
+
+struct ManualMealCard: View {
+    let meal: ManualMealEntry
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+
+    private var mealTypeColor: Color {
+        switch meal.mealType {
+        case "breakfast": return .orange
+        case "lunch": return .yellow
+        case "dinner": return .purple
+        case "snack": return .green
+        default: return .gray
+        }
+    }
+
+    private var mealTypeIcon: String {
+        switch meal.mealType {
+        case "breakfast": return "sunrise.fill"
+        case "lunch": return "sun.max.fill"
+        case "dinner": return "moon.fill"
+        case "snack": return "leaf.fill"
+        default: return "fork.knife"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack {
+                // Meal type badge
+                HStack(spacing: 4) {
+                    Image(systemName: mealTypeIcon)
+                        .font(.caption)
+                    Text(meal.mealType.capitalized)
+                        .font(.caption.weight(.medium))
+                }
+                .foregroundColor(mealTypeColor)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(mealTypeColor.opacity(0.15))
+                .cornerRadius(8)
+
+                Text(meal.name)
+                    .font(.subheadline.weight(.semibold))
+
+                Spacer()
+
+                Button(action: onEdit) {
+                    Image(systemName: "pencil.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+
+                Button(action: onDelete) {
+                    Image(systemName: "trash.circle.fill")
+                        .foregroundStyle(.red.opacity(0.7))
+                }
+            }
+
+            // Ingredients
+            IngredientFlowLayout(spacing: 6) {
+                ForEach(meal.ingredients) { ingredient in
+                    Text(ingredient.displayString)
+                        .font(.caption)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(.systemGray5))
+                        .cornerRadius(6)
+                }
+            }
+
+            // Estimated calories
+            HStack {
+                Image(systemName: "flame.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                Text("~\(meal.totalEstimatedCalories) cal")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(12)
+    }
+}
+
+// MARK: - Flow Layout for ingredients
+
+struct IngredientFlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let result = FlowResult(in: proposal.width ?? 0, subviews: subviews, spacing: spacing)
+        return result.size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let result = FlowResult(in: bounds.width, subviews: subviews, spacing: spacing)
+        for (index, subview) in subviews.enumerated() {
+            subview.place(at: CGPoint(x: bounds.minX + result.positions[index].x,
+                                       y: bounds.minY + result.positions[index].y),
+                         proposal: .unspecified)
+        }
+    }
+
+    struct FlowResult {
+        var size: CGSize = .zero
+        var positions: [CGPoint] = []
+
+        init(in maxWidth: CGFloat, subviews: Subviews, spacing: CGFloat) {
+            var x: CGFloat = 0
+            var y: CGFloat = 0
+            var rowHeight: CGFloat = 0
+
+            for subview in subviews {
+                let size = subview.sizeThatFits(.unspecified)
+                if x + size.width > maxWidth && x > 0 {
+                    x = 0
+                    y += rowHeight + spacing
+                    rowHeight = 0
+                }
+                positions.append(CGPoint(x: x, y: y))
+                rowHeight = max(rowHeight, size.height)
+                x += size.width + spacing
+            }
+            size = CGSize(width: maxWidth, height: y + rowHeight)
+        }
+    }
+}
+
+// MARK: - Add Meal Sheet
+
+struct AddMealSheet: View {
+    @ObservedObject var viewModel: PlanCreationViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var mealType = "breakfast"
+    @State private var mealName = ""
+    @State private var ingredients: [ManualIngredient] = []
+    @State private var showAddIngredient = false
+
+    // New ingredient fields
+    @State private var newIngredientName = ""
+    @State private var newIngredientQuantity: Double = 100
+    @State private var newIngredientUnit = "g"
+
+    private let mealTypes = ["breakfast", "lunch", "dinner", "snack"]
+    private let units = ["g", "oz", "cups", "tbsp", "tsp", "pieces", "ml", "whole"]
+
+    // Common ingredients with estimated calories per 100g
+    private let commonIngredients: [(name: String, calPer100g: Int)] = [
+        ("Chicken Breast", 165), ("Rice (cooked)", 130), ("Eggs", 155),
+        ("Salmon", 208), ("Broccoli", 34), ("Sweet Potato", 86),
+        ("Ground Beef", 250), ("Oatmeal", 68), ("Greek Yogurt", 59),
+        ("Avocado", 160), ("Spinach", 23), ("Banana", 89),
+        ("Almonds", 579), ("Olive Oil", 884), ("Bread", 265)
+    ]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    mealTypeSection
+                    mealNameSection
+                    Divider()
+                    ingredientsSection
+                    totalEstimateSection
+                }
+                .padding(.vertical)
+            }
+            .navigationTitle(viewModel.editingMealIndex != nil ? "Edit Meal" : "Add Meal")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") {
+                        saveMeal()
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(mealName.isEmpty || ingredients.isEmpty)
+                }
+            }
+            .onAppear { loadExistingMeal() }
+        }
+    }
+
+    private var mealTypeSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Meal Type")
+                .font(.subheadline.bold())
+            HStack(spacing: 10) {
+                ForEach(mealTypes, id: \.self) { type in
+                    ManualMealTypeButton(type: type, isSelected: mealType == type) {
+                        mealType = type
+                    }
+                }
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    private var mealNameSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Meal Name")
+                .font(.subheadline.bold())
+            TextField("e.g., Grilled Chicken with Rice", text: $mealName)
+                .textFieldStyle(.roundedBorder)
+        }
+        .padding(.horizontal)
+    }
+
+    private var ingredientsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ingredientsHeader
+            addedIngredientsList
+            quickAddSection
+            customIngredientSection
+        }
+        .padding(.horizontal)
+    }
+
+    private var ingredientsHeader: some View {
+        HStack {
+            Text("Ingredients")
+                .font(.subheadline.bold())
+            Spacer()
+            Text("\(ingredients.count) added")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var addedIngredientsList: some View {
+        if !ingredients.isEmpty {
+            ForEach(ingredients) { ingredient in
+                AddedIngredientRow(ingredient: ingredient) {
+                    ingredients.removeAll { $0.id == ingredient.id }
+                }
+            }
+        }
+    }
+
+    private var quickAddSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Quick Add")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            IngredientFlowLayout(spacing: 8) {
+                ForEach(commonIngredients, id: \.name) { item in
+                    Button {
+                        addIngredient(name: item.name, quantity: 100, unit: "g", calPer100g: item.calPer100g)
+                    } label: {
+                        Text(item.name)
+                            .font(.caption)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color(.systemGray5))
+                            .foregroundStyle(.primary)
+                            .cornerRadius(8)
+                    }
+                }
+            }
+        }
+    }
+
+    private var customIngredientSection: some View {
+        VStack(spacing: 12) {
+            Text("Add Custom Ingredient")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            customIngredientInputRow
+            addIngredientButton
+        }
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .cornerRadius(12)
+    }
+
+    private var customIngredientInputRow: some View {
+        HStack(spacing: 8) {
+            TextField("Ingredient", text: $newIngredientName)
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: .infinity)
+            TextField("Qty", value: $newIngredientQuantity, format: .number)
+                .textFieldStyle(.roundedBorder)
+                .keyboardType(.decimalPad)
+                .frame(width: 60)
+            Picker("", selection: $newIngredientUnit) {
+                ForEach(units, id: \.self) { Text($0).tag($0) }
+            }
+            .frame(width: 70)
+        }
+    }
+
+    private var addIngredientButton: some View {
+        Button {
+            if !newIngredientName.isEmpty {
+                addIngredient(name: newIngredientName, quantity: newIngredientQuantity, unit: newIngredientUnit, calPer100g: 100)
+                newIngredientName = ""
+                newIngredientQuantity = 100
+            }
+        } label: {
+            HStack {
+                Image(systemName: "plus.circle.fill")
+                Text("Add Ingredient")
+            }
+            .font(.subheadline.weight(.medium))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(newIngredientName.isEmpty ? Color.gray.opacity(0.3) : Color.green.opacity(0.2))
+            .foregroundColor(newIngredientName.isEmpty ? Color.secondary : Color.green)
+            .cornerRadius(8)
+        }
+        .disabled(newIngredientName.isEmpty)
+    }
+
+    @ViewBuilder
+    private var totalEstimateSection: some View {
+        if !ingredients.isEmpty {
+            HStack {
+                Image(systemName: "flame.fill")
+                    .foregroundStyle(.orange)
+                Text("Estimated Total: ~\(totalCalories) calories")
+                    .font(.subheadline.weight(.medium))
+            }
+            .padding()
+            .frame(maxWidth: .infinity)
+            .background(Color.orange.opacity(0.1))
+            .cornerRadius(12)
+            .padding(.horizontal)
+        }
+    }
+
+    private func loadExistingMeal() {
+        if let index = viewModel.editingMealIndex,
+           index < viewModel.manualMeals.count {
+            let meal = viewModel.manualMeals[index]
+            mealType = meal.mealType
+            mealName = meal.name
+            ingredients = meal.ingredients
+        }
+    }
+
+    private var totalCalories: Int {
+        ingredients.reduce(0) { $0 + $1.estimatedCalories }
+    }
+
+    private func addIngredient(name: String, quantity: Double, unit: String, calPer100g: Int) {
+        let estimatedCal: Int
+        if unit == "g" {
+            estimatedCal = Int(Double(calPer100g) * quantity / 100)
+        } else if unit == "oz" {
+            estimatedCal = Int(Double(calPer100g) * quantity * 28.35 / 100)
+        } else {
+            estimatedCal = calPer100g // rough estimate for other units
+        }
+
+        let ingredient = ManualIngredient(
+            name: name,
+            quantity: quantity,
+            unit: unit,
+            estimatedCalories: estimatedCal
+        )
+        ingredients.append(ingredient)
+    }
+
+    private func saveMeal() {
+        let meal = ManualMealEntry(
+            mealType: mealType,
+            name: mealName,
+            ingredients: ingredients
+        )
+
+        if let index = viewModel.editingMealIndex {
+            viewModel.updateManualMeal(at: index, with: meal)
+        } else {
+            viewModel.addManualMeal(meal)
+        }
+    }
+}
+
+// MARK: - Added Ingredient Row
+
+struct AddedIngredientRow: View {
+    let ingredient: ManualIngredient
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack {
+            Text(ingredient.displayString)
+                .font(.subheadline)
+            Spacer()
+            Text("~\(ingredient.estimatedCalories) cal")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.red.opacity(0.7))
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(Color(.systemGray6))
+        .cornerRadius(8)
+    }
+}
+
+// MARK: - Manual Meal Type Button
+
+struct ManualMealTypeButton: View {
+    let type: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    private var icon: String {
+        switch type {
+        case "breakfast": return "sunrise.fill"
+        case "lunch": return "sun.max.fill"
+        case "dinner": return "moon.fill"
+        case "snack": return "leaf.fill"
+        default: return "fork.knife"
+        }
+    }
+
+    private var color: Color {
+        switch type {
+        case "breakfast": return .orange
+        case "lunch": return .yellow
+        case "dinner": return .purple
+        case "snack": return .green
+        default: return .gray
+        }
+    }
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.title3)
+                Text(type.capitalized)
+                    .font(.caption)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(isSelected ? color : Color(.systemGray6))
+            .foregroundStyle(isSelected ? .white : .primary)
+            .cornerRadius(10)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Manual Workout Entry View (keeping existing behavior)
+
+struct ManualWorkoutEntryView: View {
+    @ObservedObject var viewModel: PlanCreationViewModel
+
+    var body: some View {
         VStack(spacing: 16) {
             // Plan name
             TextField("Plan Name", text: $viewModel.manualName)
@@ -965,26 +1950,18 @@ struct ManualCreateTab: View {
             HStack {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField(
-                    planType == .workout ? "Search exercises..." : "Search foods...",
-                    text: $viewModel.searchQuery
-                )
-                .textFieldStyle(.plain)
-                .onSubmit {
-                    Task {
-                        if planType == .workout {
+                TextField("Search exercises...", text: $viewModel.searchQuery)
+                    .textFieldStyle(.plain)
+                    .onSubmit {
+                        Task {
                             await viewModel.searchExercises()
-                        } else {
-                            await viewModel.searchFoods()
                         }
                     }
-                }
 
                 if !viewModel.searchQuery.isEmpty {
                     Button {
                         viewModel.searchQuery = ""
                         viewModel.exerciseSearchResults = []
-                        viewModel.foodSearchResults = []
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.secondary)
@@ -997,17 +1974,13 @@ struct ManualCreateTab: View {
             .padding(.horizontal)
 
             // Search results
-            if planType == .workout && !viewModel.exerciseSearchResults.isEmpty {
+            if !viewModel.exerciseSearchResults.isEmpty {
                 exerciseSearchResults
-            } else if planType == .meal && !viewModel.foodSearchResults.isEmpty {
-                foodSearchResults
             }
 
             // Selected items
-            if planType == .workout && !viewModel.selectedExercises.isEmpty {
+            if !viewModel.selectedExercises.isEmpty {
                 selectedExercisesSection
-            } else if planType == .meal && !viewModel.selectedFoods.isEmpty {
-                selectedFoodsSection
             }
 
             Spacer()
@@ -1015,11 +1988,7 @@ struct ManualCreateTab: View {
             // Create button
             Button {
                 Task {
-                    if planType == .workout {
-                        await viewModel.manualCreateWorkoutPlan()
-                    } else {
-                        await viewModel.manualCreateMealPlan()
-                    }
+                    await viewModel.manualCreateWorkoutPlan()
                 }
             } label: {
                 HStack {
@@ -1027,7 +1996,7 @@ struct ManualCreateTab: View {
                         ProgressView()
                             .tint(.white)
                     }
-                    Text("Create \(planType.title)")
+                    Text("Create Workout Plan")
                 }
                 .font(.headline)
                 .frame(maxWidth: .infinity)
@@ -1043,10 +2012,7 @@ struct ManualCreateTab: View {
     }
 
     private var canCreate: Bool {
-        !viewModel.manualName.isEmpty && (
-            (planType == .workout && !viewModel.selectedExercises.isEmpty) ||
-            (planType == .meal && !viewModel.selectedFoods.isEmpty)
-        )
+        !viewModel.manualName.isEmpty && !viewModel.selectedExercises.isEmpty
     }
 
     private var exerciseSearchResults: some View {
@@ -1383,6 +2349,284 @@ struct MuscleGroupChip: View {
             .background(isSelected ? Color.green : Color(.systemGray6))
             .foregroundStyle(isSelected ? .white : .primary)
             .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Ingredient Picker Sheet (Engaging Game-like Experience)
+
+struct IngredientPickerSheet: View {
+    @Binding var selectedIngredients: [String]
+    @Environment(\.dismiss) private var dismiss
+    @State private var currentCategory = 0
+    @State private var customIngredient = ""
+    @State private var showCustomInput = false
+
+    private let categories: [(name: String, icon: String, color: Color, items: [String])] = [
+        ("Proteins", "flame.fill", .red, [
+            "Chicken Breast", "Ground Beef", "Salmon", "Eggs", "Tofu",
+            "Shrimp", "Turkey", "Pork", "Tuna", "Greek Yogurt"
+        ]),
+        ("Vegetables", "leaf.fill", .green, [
+            "Broccoli", "Spinach", "Bell Peppers", "Onions", "Tomatoes",
+            "Carrots", "Zucchini", "Mushrooms", "Asparagus", "Kale"
+        ]),
+        ("Carbs", "bolt.fill", .orange, [
+            "Rice", "Pasta", "Potatoes", "Bread", "Oats",
+            "Quinoa", "Sweet Potato", "Tortillas", "Couscous", "Noodles"
+        ]),
+        ("Dairy & More", "drop.fill", .blue, [
+            "Cheese", "Milk", "Butter", "Cream", "Avocado",
+            "Olive Oil", "Coconut Oil", "Almond Milk", "Sour Cream", "Feta"
+        ]),
+        ("Pantry", "archivebox.fill", .purple, [
+            "Garlic", "Ginger", "Lemon", "Soy Sauce", "Honey",
+            "Beans", "Chickpeas", "Lentils", "Nuts", "Seeds"
+        ])
+    ]
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Category tabs (horizontally scrollable)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(0..<categories.count, id: \.self) { index in
+                            CategoryTab(
+                                name: categories[index].name,
+                                icon: categories[index].icon,
+                                color: categories[index].color,
+                                isSelected: currentCategory == index
+                            ) {
+                                withAnimation(.spring(response: 0.3)) {
+                                    currentCategory = index
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
+                }
+                .background(Color(.systemGroupedBackground))
+
+                // Ingredient grid - tappable
+                ScrollView {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                        ForEach(categories[currentCategory].items, id: \.self) { item in
+                            IngredientChipButton(
+                                name: item,
+                                isSelected: selectedIngredients.contains(item),
+                                color: categories[currentCategory].color
+                            ) {
+                                withAnimation(.spring(response: 0.2)) {
+                                    if selectedIngredients.contains(item) {
+                                        selectedIngredients.removeAll { $0 == item }
+                                    } else {
+                                        selectedIngredients.append(item)
+                                    }
+                                }
+                            }
+                        }
+
+                        // Add custom ingredient button
+                        Button {
+                            showCustomInput = true
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "plus.circle")
+                                Text("Add Custom")
+                            }
+                            .font(.subheadline.weight(.medium))
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(Color(.systemGray6))
+                            .cornerRadius(12)
+                        }
+                    }
+                    .padding()
+                }
+
+                // Selected count and done button
+                VStack(spacing: 12) {
+                    if !selectedIngredients.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(selectedIngredients, id: \.self) { ingredient in
+                                    HStack(spacing: 4) {
+                                        Text(ingredient)
+                                            .font(.caption.weight(.medium))
+                                        Button {
+                                            withAnimation(.spring(response: 0.2)) {
+                                                selectedIngredients.removeAll { $0 == ingredient }
+                                            }
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.caption)
+                                        }
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color.green)
+                                    .cornerRadius(16)
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
+                    }
+
+                    Button {
+                        dismiss()
+                    } label: {
+                        HStack {
+                            Image(systemName: "checkmark.circle.fill")
+                            Text(selectedIngredients.isEmpty ? "Skip Ingredients" : "Done (\(selectedIngredients.count) selected)")
+                        }
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(selectedIngredients.isEmpty ? Color.secondary : Color.green)
+                        .cornerRadius(14)
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom)
+                }
+                .background(Color(.systemBackground))
+            }
+            .navigationTitle("Select Ingredients")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                if !selectedIngredients.isEmpty {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Clear All") {
+                            withAnimation {
+                                selectedIngredients.removeAll()
+                            }
+                        }
+                        .foregroundColor(.red)
+                    }
+                }
+            }
+            .alert("Add Custom Ingredient", isPresented: $showCustomInput) {
+                TextField("Ingredient name", text: $customIngredient)
+                Button("Cancel", role: .cancel) {
+                    customIngredient = ""
+                }
+                Button("Add") {
+                    if !customIngredient.isEmpty && !selectedIngredients.contains(customIngredient) {
+                        selectedIngredients.append(customIngredient)
+                    }
+                    customIngredient = ""
+                }
+            }
+        }
+        .presentationDetents([.large])
+    }
+}
+
+// MARK: - Category Tab
+
+struct CategoryTab: View {
+    let name: String
+    let icon: String
+    let color: Color
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.caption)
+                Text(name)
+                    .font(.subheadline.weight(.medium))
+            }
+            .foregroundColor(isSelected ? .white : color)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(isSelected ? color : color.opacity(0.15))
+            .cornerRadius(20)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Ingredient Chip Button
+
+struct IngredientChipButton: View {
+    let name: String
+    let isSelected: Bool
+    let color: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.white)
+                }
+                Text(name)
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(1)
+            }
+            .foregroundColor(isSelected ? .white : .primary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(isSelected ? color : Color(.systemGray6))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? color : Color.clear, lineWidth: 2)
+            )
+        }
+        .buttonStyle(IngredientButtonStyle())
+    }
+}
+
+// MARK: - Ingredient Button Style (with bounce)
+
+struct IngredientButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.95 : 1)
+            .animation(.spring(response: 0.2), value: configuration.isPressed)
+    }
+}
+
+// MARK: - Day Count Chip
+
+struct DayCountChip: View {
+    let days: Int
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 2) {
+                Text("\(days)")
+                    .font(.headline.bold())
+                Text(days == 1 ? "day" : "days")
+                    .font(.caption2)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(isSelected ? Color.green : Color(.systemBackground))
+            .foregroundStyle(isSelected ? .white : .primary)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isSelected ? Color.green : Color(.systemGray4), lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
     }

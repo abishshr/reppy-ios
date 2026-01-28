@@ -4,8 +4,19 @@ import SwiftUI
 struct ChatBubble: View {
     let message: ChatMessage
     let onConfirm: ((String, String) -> Void)?
+    let onApprovePlan: ((PlanPreview) -> Void)?
 
     @State private var appeared = false
+
+    init(
+        message: ChatMessage,
+        onConfirm: ((String, String) -> Void)? = nil,
+        onApprovePlan: ((PlanPreview) -> Void)? = nil
+    ) {
+        self.message = message
+        self.onConfirm = onConfirm
+        self.onApprovePlan = onApprovePlan
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -131,9 +142,9 @@ struct ChatBubble: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                // Coach name tag
+                // Reppy name tag
                 HStack(spacing: 6) {
-                    Text("Coach")
+                    Text("Reppy")
                         .font(.caption)
                         .fontWeight(.bold)
                         .foregroundColor(.orange)
@@ -143,11 +154,22 @@ struct ChatBubble: View {
                         .foregroundColor(.blue)
                 }
 
-                // Message content with better styling
-                Text(message.content)
-                    .font(.system(.body, design: .rounded))
-                    .foregroundColor(.primary)
-                    .textSelection(.enabled)
+                // Plan preview card (if present)
+                if let plan = message.planPreview {
+                    PlanPreviewCard(
+                        plan: plan,
+                        onApprove: {
+                            onApprovePlan?(plan)
+                        },
+                        onEdit: nil
+                    )
+                } else {
+                    // Message content with better styling
+                    Text(message.content)
+                        .font(.system(.body, design: .rounded))
+                        .foregroundColor(.primary)
+                        .textSelection(.enabled)
+                }
 
                 // Pending confirmation card
                 if let pending = message.pendingConfirmation {
@@ -456,130 +478,317 @@ struct WorkoutConfirmationDetails: View {
 
 struct MealConfirmationDetails: View {
     let data: [String: AnyCodable]
+    @State private var showAllNutrients = false
 
-    private var items: [[String: Any]] {
-        data["items"]?.value as? [[String: Any]] ?? []
-    }
-
-    private var calories: Int {
-        data["calories"]?.value as? Int ?? Int(data["calories"]?.value as? Double ?? 0)
-    }
-
-    private var protein: Double {
-        // Handle both Int and Double from backend
-        if let doubleValue = data["protein_g"]?.value as? Double {
-            return doubleValue
-        } else if let intValue = data["protein_g"]?.value as? Int {
-            return Double(intValue)
-        }
+    // Helper to get numeric value
+    private func getDouble(_ key: String) -> Double {
+        if let d = data[key]?.value as? Double { return d }
+        if let i = data[key]?.value as? Int { return Double(i) }
         return 0
     }
 
-    private var carbs: Double {
-        // Handle both Int and Double from backend
-        if let doubleValue = data["carbs_g"]?.value as? Double {
-            return doubleValue
-        } else if let intValue = data["carbs_g"]?.value as? Int {
-            return Double(intValue)
-        }
-        return 0
+    private var items: [[String: Any]] { data["items"]?.value as? [[String: Any]] ?? [] }
+    private var calories: Int { Int(getDouble("calories")) }
+    private var protein: Double { getDouble("protein_g") }
+    private var carbs: Double { getDouble("carbs_g") }
+    private var fat: Double { getDouble("fat_g") }
+    private var sugar: Double { getDouble("sugar_g") }
+    private var fiber: Double { getDouble("fiber_g") }
+    private var sodium: Double { getDouble("sodium_mg") }
+    private var saturatedFat: Double { getDouble("saturated_fat_g") }
+    private var cholesterol: Double { getDouble("cholesterol_mg") }
+    private var vitaminA: Double { getDouble("vitamin_a_mcg") }
+    private var vitaminC: Double { getDouble("vitamin_c_mg") }
+    private var vitaminD: Double { getDouble("vitamin_d_mcg") }
+    private var vitaminB12: Double { getDouble("vitamin_b12_mcg") }
+    private var calcium: Double { getDouble("calcium_mg") }
+    private var iron: Double { getDouble("iron_mg") }
+    private var potassium: Double { getDouble("potassium_mg") }
+
+    // Health score calculation (0-100)
+    private var healthScore: Int {
+        var score = 50 // Start neutral
+
+        // Protein is good (+)
+        if protein > 20 { score += 15 }
+        else if protein > 10 { score += 8 }
+
+        // Fiber is good (+)
+        if fiber > 5 { score += 12 }
+        else if fiber > 2 { score += 6 }
+
+        // Vitamins are good (+)
+        if vitaminC > 10 { score += 5 }
+        if vitaminA > 100 { score += 5 }
+        if vitaminD > 1 { score += 5 }
+        if iron > 1 { score += 5 }
+        if calcium > 50 { score += 5 }
+        if potassium > 200 { score += 5 }
+
+        // Sugar is bad (-)
+        if sugar > 25 { score -= 20 }
+        else if sugar > 15 { score -= 10 }
+        else if sugar > 8 { score -= 5 }
+
+        // Saturated fat is bad (-)
+        if saturatedFat > 10 { score -= 15 }
+        else if saturatedFat > 5 { score -= 8 }
+
+        // Sodium is bad if high (-)
+        if sodium > 800 { score -= 12 }
+        else if sodium > 500 { score -= 6 }
+
+        // Cholesterol (moderate concern)
+        if cholesterol > 200 { score -= 8 }
+        else if cholesterol > 100 { score -= 4 }
+
+        return min(100, max(0, score))
     }
 
-    private var fat: Double {
-        // Handle both Int and Double from backend
-        if let doubleValue = data["fat_g"]?.value as? Double {
-            return doubleValue
-        } else if let intValue = data["fat_g"]?.value as? Int {
-            return Double(intValue)
-        }
-        return 0
+    private var scoreColor: Color {
+        if healthScore >= 70 { return .green }
+        if healthScore >= 50 { return .yellow }
+        if healthScore >= 30 { return .orange }
+        return .red
     }
 
-    // Micronutrients
-    private var sugar: Double {
-        if let doubleValue = data["sugar_g"]?.value as? Double { return doubleValue }
-        if let intValue = data["sugar_g"]?.value as? Int { return Double(intValue) }
-        return 0
+    private var scoreLabel: String {
+        if healthScore >= 70 { return "Great" }
+        if healthScore >= 50 { return "Good" }
+        if healthScore >= 30 { return "OK" }
+        return "Poor"
     }
 
-    private var fiber: Double {
-        if let doubleValue = data["fiber_g"]?.value as? Double { return doubleValue }
-        if let intValue = data["fiber_g"]?.value as? Int { return Double(intValue) }
-        return 0
-    }
-
-    private var sodium: Double {
-        if let doubleValue = data["sodium_mg"]?.value as? Double { return doubleValue }
-        if let intValue = data["sodium_mg"]?.value as? Int { return Double(intValue) }
-        return 0
-    }
-
-    private var saturatedFat: Double {
-        if let doubleValue = data["saturated_fat_g"]?.value as? Double { return doubleValue }
-        if let intValue = data["saturated_fat_g"]?.value as? Int { return Double(intValue) }
-        return 0
-    }
-
-    private var hasMicronutrients: Bool {
-        sugar > 0 || fiber > 0 || sodium > 0 || saturatedFat > 0
+    private var hasExtendedNutrients: Bool {
+        sugar > 0 || fiber > 0 || sodium > 0 || saturatedFat > 0 ||
+        vitaminA > 0 || vitaminC > 0 || vitaminD > 0 || vitaminB12 > 0 ||
+        calcium > 0 || iron > 0 || potassium > 0
     }
 
     var body: some View {
-        VStack(spacing: 12) {
-            // Macro chips
-            HStack(spacing: 8) {
-                StatChip(icon: "flame.fill", value: "\(calories)", label: "cal", color: .orange)
-                StatChip(icon: "p.circle.fill", value: "\(Int(protein))", label: "g", color: .blue)
-                StatChip(icon: "c.circle.fill", value: "\(Int(carbs))", label: "g", color: .green)
-                StatChip(icon: "f.circle.fill", value: "\(Int(fat))", label: "g", color: .purple)
-            }
+        VStack(spacing: 14) {
+            // Health Score Badge
+            HStack {
+                // Score circle
+                ZStack {
+                    Circle()
+                        .stroke(scoreColor.opacity(0.3), lineWidth: 4)
+                        .frame(width: 44, height: 44)
 
-            // Micronutrient chips (if available)
-            if hasMicronutrients {
-                HStack(spacing: 8) {
-                    if sugar > 0 {
-                        MicroChip(label: "Sugar", value: "\(Int(sugar))g", color: .pink)
-                    }
-                    if fiber > 0 {
-                        MicroChip(label: "Fiber", value: "\(Int(fiber))g", color: .green)
-                    }
-                    if sodium > 0 {
-                        MicroChip(label: "Sodium", value: "\(Int(sodium))mg", color: .gray)
-                    }
-                    if saturatedFat > 0 {
-                        MicroChip(label: "Sat Fat", value: "\(Int(saturatedFat))g", color: .red)
-                    }
+                    Circle()
+                        .trim(from: 0, to: Double(healthScore) / 100)
+                        .stroke(scoreColor, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                        .frame(width: 44, height: 44)
+                        .rotationEffect(.degrees(-90))
+
+                    Text("\(healthScore)")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundColor(scoreColor)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(scoreLabel)
+                        .font(.subheadline.bold())
+                        .foregroundColor(scoreColor)
+                    Text("Health Score")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                // Quick macro summary
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(calories) cal")
+                        .font(.title3.bold())
+                    Text("\(Int(protein))P • \(Int(carbs))C • \(Int(fat))F")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
 
-            // Food items
-            if !items.isEmpty {
-                VStack(spacing: 8) {
-                    ForEach(Array(items.prefix(4).enumerated()), id: \.offset) { _, item in
-                        if let name = item["name"] as? String {
-                            HStack {
-                                Text(name)
-                                    .font(.subheadline)
+            Divider()
 
-                                Spacer()
+            // Main Macros - compact grid
+            LazyVGrid(columns: [
+                GridItem(.flexible()),
+                GridItem(.flexible()),
+                GridItem(.flexible()),
+                GridItem(.flexible())
+            ], spacing: 8) {
+                MacroCell(label: "Protein", value: "\(Int(protein))g", color: .blue, icon: "p.circle.fill")
+                MacroCell(label: "Carbs", value: "\(Int(carbs))g", color: .green, icon: "c.circle.fill")
+                MacroCell(label: "Fat", value: "\(Int(fat))g", color: .purple, icon: "f.circle.fill")
+                MacroCell(label: "Fiber", value: "\(Int(fiber))g", color: .mint, icon: "leaf.fill")
+            }
 
-                                if let itemCals = item["calories"] as? Int {
-                                    Text("\(itemCals) cal")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
+            // Expandable nutrients section
+            if hasExtendedNutrients {
+                Button {
+                    withAnimation(.spring(response: 0.3)) {
+                        showAllNutrients.toggle()
+                    }
+                } label: {
+                    HStack {
+                        Text(showAllNutrients ? "Hide Details" : "Show All Nutrients")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                        Spacer()
+                        Image(systemName: showAllNutrients ? "chevron.up" : "chevron.down")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                if showAllNutrients {
+                    VStack(spacing: 10) {
+                        // Micronutrients to watch
+                        if sugar > 0 || sodium > 0 || saturatedFat > 0 || cholesterol > 0 {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Watch")
+                                    .font(.caption2.bold())
+                                    .foregroundColor(.secondary)
+
+                                HStack(spacing: 6) {
+                                    if sugar > 0 {
+                                        NutrientBadge(name: "Sugar", value: "\(Int(sugar))g", isGood: sugar < 10)
+                                    }
+                                    if sodium > 0 {
+                                        NutrientBadge(name: "Sodium", value: "\(Int(sodium))mg", isGood: sodium < 400)
+                                    }
+                                    if saturatedFat > 0 {
+                                        NutrientBadge(name: "Sat Fat", value: "\(Int(saturatedFat))g", isGood: saturatedFat < 5)
+                                    }
+                                    if cholesterol > 0 {
+                                        NutrientBadge(name: "Chol", value: "\(Int(cholesterol))mg", isGood: cholesterol < 100)
+                                    }
+                                }
+                            }
+                        }
+
+                        // Vitamins
+                        if vitaminA > 0 || vitaminC > 0 || vitaminD > 0 || vitaminB12 > 0 {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Vitamins")
+                                    .font(.caption2.bold())
+                                    .foregroundColor(.secondary)
+
+                                HStack(spacing: 6) {
+                                    if vitaminA > 0 {
+                                        NutrientBadge(name: "A", value: "\(Int(vitaminA))mcg", isGood: true)
+                                    }
+                                    if vitaminC > 0 {
+                                        NutrientBadge(name: "C", value: "\(Int(vitaminC))mg", isGood: true)
+                                    }
+                                    if vitaminD > 0 {
+                                        NutrientBadge(name: "D", value: String(format: "%.1f", vitaminD), isGood: true)
+                                    }
+                                    if vitaminB12 > 0 {
+                                        NutrientBadge(name: "B12", value: String(format: "%.1f", vitaminB12), isGood: true)
+                                    }
+                                }
+                            }
+                        }
+
+                        // Minerals
+                        if calcium > 0 || iron > 0 || potassium > 0 {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Minerals")
+                                    .font(.caption2.bold())
+                                    .foregroundColor(.secondary)
+
+                                HStack(spacing: 6) {
+                                    if calcium > 0 {
+                                        NutrientBadge(name: "Calcium", value: "\(Int(calcium))mg", isGood: true)
+                                    }
+                                    if iron > 0 {
+                                        NutrientBadge(name: "Iron", value: String(format: "%.1f", iron), isGood: true)
+                                    }
+                                    if potassium > 0 {
+                                        NutrientBadge(name: "K", value: "\(Int(potassium))mg", isGood: true)
+                                    }
                                 }
                             }
                         }
                     }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+            }
 
-                    if items.count > 4 {
-                        Text("+\(items.count - 4) more items")
-                            .font(.caption)
+            // Food items (compact)
+            if !items.isEmpty {
+                VStack(spacing: 4) {
+                    ForEach(Array(items.prefix(3).enumerated()), id: \.offset) { _, item in
+                        if let name = item["name"] as? String {
+                            HStack {
+                                Text("• \(name)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                            }
+                        }
+                    }
+                    if items.count > 3 {
+                        Text("+\(items.count - 3) more")
+                            .font(.caption2)
                             .foregroundColor(.secondary)
                     }
                 }
             }
         }
+    }
+}
+
+// MARK: - Macro Cell Component
+
+private struct MacroCell: View {
+    let label: String
+    let value: String
+    let color: Color
+    let icon: String
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundColor(color)
+
+            Text(value)
+                .font(.caption.bold())
+
+            Text(label)
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(color.opacity(0.1))
+        .cornerRadius(8)
+    }
+}
+
+// MARK: - Nutrient Badge Component (for meal confirmation)
+
+private struct NutrientBadge: View {
+    let name: String
+    let value: String
+    let isGood: Bool
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Circle()
+                .fill(isGood ? Color.green : Color.orange)
+                .frame(width: 5, height: 5)
+
+            Text("\(name): \(value)")
+                .font(.system(size: 10))
+                .foregroundColor(.primary)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(Color(.tertiarySystemFill))
+        .cornerRadius(6)
     }
 }
 

@@ -35,6 +35,16 @@ final class DashboardViewModel: ObservableObject {
     @Published var todayCholesterol = 0.0
     @Published var cholesterolTarget = 300.0  // mg, FDA daily value
 
+    // Vitamin/Mineral tracking (daily totals from meals + supplements)
+    @Published var vitaminMineralTotals: VitaminMineralTotals = VitaminMineralTotals()
+    @Published var vitaminMineralTargets: MicronutrientTargets?
+
+    // Supplement tracking
+    @Published var supplementSummary: TodaySupplementSummary?
+
+    // Blood work tracking
+    @Published var bloodWorkSummary: BloodWorkSummary?
+
     // Exercise calories
     @Published var caloriesBurned = 0
 
@@ -104,27 +114,56 @@ final class DashboardViewModel: ObservableObject {
 
     // MARK: - Data Loading
 
+    /// Load data in two phases: critical first (fast UI), then secondary in background
     func loadData() async {
         isLoading = true
 
-        async let activityTask: () = loadActivity()
+        // Phase 1: Critical data - load in parallel (required for main UI)
+        async let profileTask: () = loadProfile()
         async let mealsTask: () = loadMeals()
         async let workoutsTask: () = loadWorkouts()
-        async let profileTask: () = loadProfile()
         async let todayPlanTask: () = loadTodaysPlan()
         async let waterTask: () = loadWater()
-        async let streakTask: () = loadStreak()
 
-        _ = await (activityTask, mealsTask, workoutsTask, profileTask, todayPlanTask, waterTask, streakTask)
+        _ = await (profileTask, mealsTask, workoutsTask, todayPlanTask, waterTask)
 
-        // Load cycle data after profile (need to know if female user)
-        await loadCycle()
-
+        // UI is now usable - hide loading indicator
         isLoading = false
+
+        // Phase 2: Secondary data - load in background (doesn't block UI)
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self = self else { return }
+
+            async let activityTask: () = await self.loadActivity()
+            async let streakTask: () = await self.loadStreak()
+            async let supplementTask: () = await self.loadSupplements()
+            async let bloodWorkTask: () = await self.loadBloodWork()
+
+            _ = await (activityTask, streakTask, supplementTask, bloodWorkTask)
+
+            // Load cycle data (depends on profile being loaded)
+            await self.loadCycle()
+
+            // Combine vitamin/mineral totals on main actor
+            await MainActor.run {
+                self.combineVitaminMineralTotals()
+            }
+        }
     }
 
     func refresh() async {
+        // On refresh, load everything but prioritize critical data
         await loadData()
+    }
+
+    /// Quick refresh - only reload today's data (for pull-to-refresh)
+    func quickRefresh() async {
+        async let mealsTask: () = loadMeals()
+        async let workoutsTask: () = loadWorkouts()
+        async let todayPlanTask: () = loadTodaysPlan()
+        async let waterTask: () = loadWater()
+
+        _ = await (mealsTask, workoutsTask, todayPlanTask, waterTask)
     }
 
     private func loadActivity() async {
@@ -154,6 +193,30 @@ final class DashboardViewModel: ObservableObject {
             let newSodium = today.reduce(0.0) { $0 + ($1.sodiumMgEst ?? 0) }
             let newSaturatedFat = today.reduce(0.0) { $0 + ($1.saturatedFatGEst ?? 0) }
             let newCholesterol = today.reduce(0.0) { $0 + ($1.cholesterolMgEst ?? 0) }
+
+            // Calculate vitamin/mineral totals
+            vitaminMineralTotals = VitaminMineralTotals(
+                vitaminA: today.reduce(0.0) { $0 + ($1.vitaminAMcgEst ?? 0) },
+                vitaminC: today.reduce(0.0) { $0 + ($1.vitaminCMgEst ?? 0) },
+                vitaminD: today.reduce(0.0) { $0 + ($1.vitaminDMcgEst ?? 0) },
+                vitaminE: today.reduce(0.0) { $0 + ($1.vitaminEMgEst ?? 0) },
+                vitaminK: today.reduce(0.0) { $0 + ($1.vitaminKMcgEst ?? 0) },
+                thiamin: today.reduce(0.0) { $0 + ($1.vitaminB1MgEst ?? 0) },
+                riboflavin: today.reduce(0.0) { $0 + ($1.vitaminB2MgEst ?? 0) },
+                niacin: today.reduce(0.0) { $0 + ($1.vitaminB3MgEst ?? 0) },
+                vitaminB6: today.reduce(0.0) { $0 + ($1.vitaminB6MgEst ?? 0) },
+                folate: today.reduce(0.0) { $0 + ($1.vitaminB9McgEst ?? 0) },
+                vitaminB12: today.reduce(0.0) { $0 + ($1.vitaminB12McgEst ?? 0) },
+                calcium: today.reduce(0.0) { $0 + ($1.calciumMgEst ?? 0) },
+                iron: today.reduce(0.0) { $0 + ($1.ironMgEst ?? 0) },
+                magnesium: today.reduce(0.0) { $0 + ($1.magnesiumMgEst ?? 0) },
+                phosphorus: today.reduce(0.0) { $0 + ($1.phosphorusMgEst ?? 0) },
+                potassium: today.reduce(0.0) { $0 + ($1.potassiumMgEst ?? 0) },
+                zinc: today.reduce(0.0) { $0 + ($1.zincMgEst ?? 0) },
+                selenium: today.reduce(0.0) { $0 + ($1.seleniumMcgEst ?? 0) },
+                copper: today.reduce(0.0) { $0 + ($1.copperMcgEst ?? 0) },
+                manganese: today.reduce(0.0) { $0 + ($1.manganeseMgEst ?? 0) }
+            )
 
             // Check if calories increased (meal was logged)
             if newCalories > previousCalories && previousCalories > 0 {
@@ -240,6 +303,9 @@ final class DashboardViewModel: ObservableObject {
 
             // Check if user is female for cycle tracking
             isFemaleUser = profile.sex == .female
+
+            // Calculate vitamin/mineral targets from profile
+            vitaminMineralTargets = MicronutrientCalculatorService.shared.calculateTargets(from: profile)
         } catch {
             // Use defaults
         }
@@ -284,41 +350,83 @@ final class DashboardViewModel: ObservableObject {
         isLoadingStreak = false
     }
 
-    private func loadTodaysPlan() async {
-        // Load active meal plan
+    private func loadSupplements() async {
         do {
-            if let mealPlan = try await container.mealPlanRepository.fetchActiveMealPlan() {
-                activeMealPlan = mealPlan
-            }
+            supplementSummary = try await container.apiClient.getTodaySupplementSummary()
         } catch {
-            // No meal plan
+            // Supplement tracking might not be set up yet
+            print("[Dashboard] Failed to load supplements: \(error)")
         }
+    }
 
-        // Load today's meals with enriched images from /today endpoint
+    private func loadBloodWork() async {
         do {
-            if let todayPlanDay = try await container.mealPlanRepository.fetchTodaysMeals() {
+            bloodWorkSummary = try await container.apiClient.getBloodWorkSummary()
+        } catch {
+            // Blood work might not be set up yet
+            print("[Dashboard] Failed to load blood work: \(error)")
+        }
+    }
+
+    /// Combine vitamin/mineral totals from both meals and supplements
+    private func combineVitaminMineralTotals() {
+        guard let supplements = supplementSummary else { return }
+
+        // Add supplement nutrients to the meal-based totals
+        vitaminMineralTotals.vitaminA += supplements.totalVitaminAMcg
+        vitaminMineralTotals.vitaminC += supplements.totalVitaminCMg
+        vitaminMineralTotals.vitaminD += supplements.totalVitaminDMcg
+        vitaminMineralTotals.vitaminE += supplements.totalVitaminEMg
+        vitaminMineralTotals.vitaminK += supplements.totalVitaminKMcg
+        vitaminMineralTotals.thiamin += supplements.totalVitaminB1Mg
+        vitaminMineralTotals.riboflavin += supplements.totalVitaminB2Mg
+        vitaminMineralTotals.niacin += supplements.totalVitaminB3Mg
+        vitaminMineralTotals.vitaminB6 += supplements.totalVitaminB6Mg
+        vitaminMineralTotals.folate += supplements.totalVitaminB9Mcg
+        vitaminMineralTotals.vitaminB12 += supplements.totalVitaminB12Mcg
+        vitaminMineralTotals.calcium += supplements.totalCalciumMg
+        vitaminMineralTotals.iron += supplements.totalIronMg
+        vitaminMineralTotals.magnesium += supplements.totalMagnesiumMg
+        vitaminMineralTotals.phosphorus += supplements.totalPhosphorusMg
+        vitaminMineralTotals.potassium += supplements.totalPotassiumMg
+        vitaminMineralTotals.zinc += supplements.totalZincMg
+        vitaminMineralTotals.selenium += supplements.totalSeleniumMcg
+        vitaminMineralTotals.copper += supplements.totalCopperMcg
+        vitaminMineralTotals.manganese += supplements.totalManganeseMg
+    }
+
+    private func loadTodaysPlan() async {
+        // Load all plan data in parallel for faster loading
+        async let mealPlanTask: MealPlan? = {
+            try? await container.mealPlanRepository.fetchActiveMealPlan()
+        }()
+        async let todayMealsTask: MealPlanDay? = {
+            try? await container.mealPlanRepository.fetchTodaysMeals()
+        }()
+        async let workoutPlanTask: WorkoutPlan? = {
+            try? await container.workoutPlanRepository.fetchActiveWorkoutPlan()
+        }()
+        async let todayWorkoutTask: WorkoutPlanDay? = {
+            try? await container.workoutPlanRepository.fetchTodaysWorkout()
+        }()
+
+        // Await all results
+        let (mealPlan, todayMealsResult, workoutPlan, todayWorkout) = await (mealPlanTask, todayMealsTask, workoutPlanTask, todayWorkoutTask)
+
+        activeMealPlan = mealPlan
+        activeWorkoutPlan = workoutPlan
+        todaysWorkout = todayWorkout
+
+        // Use today's meals from API, or fall back to plan
+        if let todayPlanDay = todayMealsResult {
+            todaysMeals = todayPlanDay.meals
+        } else if let mealPlan = mealPlan {
+            let today = Calendar.current.startOfDay(for: Date())
+            if let todayPlanDay = mealPlan.days.first(where: {
+                Calendar.current.isDate($0.date, inSameDayAs: today)
+            }) {
                 todaysMeals = todayPlanDay.meals
             }
-        } catch {
-            // Fall back to finding from active plan
-            if let mealPlan = activeMealPlan {
-                let today = Calendar.current.startOfDay(for: Date())
-                if let todayPlanDay = mealPlan.days.first(where: {
-                    Calendar.current.isDate($0.date, inSameDayAs: today)
-                }) {
-                    todaysMeals = todayPlanDay.meals
-                }
-            }
-        }
-
-        // Load today's workout with enriched GIFs from /today endpoint
-        do {
-            if let workoutPlan = try await container.workoutPlanRepository.fetchActiveWorkoutPlan() {
-                activeWorkoutPlan = workoutPlan
-            }
-            todaysWorkout = try await container.workoutPlanRepository.fetchTodaysWorkout()
-        } catch {
-            // No workout plan
         }
     }
 
@@ -479,6 +587,91 @@ final class DashboardViewModel: ObservableObject {
             }
         } catch {
             print("[Dashboard] Failed to record activity: \(error)")
+        }
+    }
+}
+
+// MARK: - Vitamin/Mineral Daily Totals
+
+struct VitaminMineralTotals {
+    // Vitamins
+    var vitaminA: Double = 0  // mcg
+    var vitaminC: Double = 0  // mg
+    var vitaminD: Double = 0  // mcg
+    var vitaminE: Double = 0  // mg
+    var vitaminK: Double = 0  // mcg
+    var thiamin: Double = 0   // mg (B1)
+    var riboflavin: Double = 0 // mg (B2)
+    var niacin: Double = 0    // mg (B3)
+    var vitaminB6: Double = 0 // mg
+    var folate: Double = 0    // mcg (B9)
+    var vitaminB12: Double = 0 // mcg
+
+    // Minerals
+    var calcium: Double = 0   // mg
+    var iron: Double = 0      // mg
+    var magnesium: Double = 0 // mg
+    var phosphorus: Double = 0 // mg
+    var potassium: Double = 0 // mg
+    var zinc: Double = 0      // mg
+    var selenium: Double = 0  // mcg
+    var copper: Double = 0    // mcg
+    var manganese: Double = 0 // mg
+
+    /// Check if any vitamin/mineral data exists
+    var hasData: Bool {
+        vitaminA > 0 || vitaminC > 0 || vitaminD > 0 || iron > 0 || calcium > 0
+    }
+
+    /// Get key nutrients with actual vs target comparison
+    func keyNutrients(targets: MicronutrientTargets?) -> [KeyNutrientProgress] {
+        guard let targets = targets else { return [] }
+        return [
+            KeyNutrientProgress(name: "Vitamin D", actual: vitaminD, target: targets.vitaminD, unit: "mcg", icon: "sun.max.fill", color: .yellow),
+            KeyNutrientProgress(name: "Vitamin C", actual: vitaminC, target: targets.vitaminC, unit: "mg", icon: "leaf.fill", color: .orange),
+            KeyNutrientProgress(name: "Iron", actual: iron, target: targets.iron, unit: "mg", icon: "drop.fill", color: .red),
+            KeyNutrientProgress(name: "Calcium", actual: calcium, target: targets.calcium, unit: "mg", icon: "bone.fill", color: .gray),
+            KeyNutrientProgress(name: "Magnesium", actual: magnesium, target: targets.magnesium, unit: "mg", icon: "sparkles", color: .purple),
+            KeyNutrientProgress(name: "Potassium", actual: potassium, target: targets.potassium, unit: "mg", icon: "bolt.fill", color: .blue),
+        ]
+    }
+}
+
+struct KeyNutrientProgress: Identifiable {
+    let id = UUID()
+    let name: String
+    let actual: Double
+    let target: Double
+    let unit: String
+    let icon: String
+    let color: Color
+
+    var progress: Double {
+        guard target > 0 else { return 0 }
+        return min(actual / target, 1.0)
+    }
+
+    var percentComplete: Int {
+        Int(progress * 100)
+    }
+
+    var formattedActual: String {
+        if actual >= 1000 {
+            return String(format: "%.0f", actual)
+        } else if actual >= 10 {
+            return String(format: "%.0f", actual)
+        } else {
+            return String(format: "%.1f", actual)
+        }
+    }
+
+    var formattedTarget: String {
+        if target >= 1000 {
+            return String(format: "%.0f", target)
+        } else if target >= 10 {
+            return String(format: "%.0f", target)
+        } else {
+            return String(format: "%.1f", target)
         }
     }
 }

@@ -1,9 +1,11 @@
 import Foundation
 
 /// Plan type for creation
-enum PlanType: String, CaseIterable {
+enum PlanType: String, CaseIterable, Identifiable {
     case workout
     case meal
+
+    var id: String { rawValue }
 
     var title: String {
         switch self {

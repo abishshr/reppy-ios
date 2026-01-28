@@ -6,6 +6,7 @@ final class SettingsViewModel: ObservableObject {
 
     @Published var showSignOutConfirmation = false
     @Published var errorMessage: String?
+    @Published var latestBodyFat: Double?
 
     // MARK: - Dependencies
 
@@ -19,6 +20,14 @@ final class SettingsViewModel: ObservableObject {
             : "Not Available"
     }
 
+    // MARK: - Init
+
+    init() {
+        Task {
+            await loadLatestBodyFat()
+        }
+    }
+
     // MARK: - Methods
 
     func syncSteps() async {
@@ -26,6 +35,16 @@ final class SettingsViewModel: ObservableObject {
             _ = try await container.activityRepository.syncTodaySteps()
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadLatestBodyFat() async {
+        do {
+            let measurement = try await container.apiClient.getLatestMeasurement()
+            latestBodyFat = measurement.bodyFatPercentage
+        } catch {
+            // No measurements yet, that's ok
+            latestBodyFat = nil
         }
     }
 }

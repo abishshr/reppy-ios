@@ -59,25 +59,6 @@ struct AuthView: View {
                 .padding(.horizontal, 40)
                 .disabled(viewModel.isLoading)
 
-                #if DEBUG
-                // Dev login for testing (DEBUG builds only)
-                Button {
-                    viewModel.devLogin(appState: appState)
-                } label: {
-                    HStack {
-                        Image(systemName: "hammer.fill")
-                        Text("Dev Login (Testing)")
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
-                    .background(Color.gray.opacity(0.3))
-                    .foregroundColor(.primary)
-                    .cornerRadius(8)
-                }
-                .padding(.horizontal, 40)
-                .disabled(viewModel.isLoading)
-                #endif
-
                 // Loading indicator
                 if viewModel.isLoading {
                     ProgressView()

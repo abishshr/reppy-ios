@@ -396,6 +396,36 @@ final class APIClient {
         try await post("/streak/record", body: EmptyBody())
     }
 
+    // MARK: - Body Measurements Endpoints
+
+    func fetchMeasurements(limit: Int = 50) async throws -> [BodyMeasurement] {
+        try await get("/measurements/?limit=\(limit)")
+    }
+
+    func createMeasurement(_ measurement: BodyMeasurementCreate) async throws -> BodyMeasurement {
+        try await post("/measurements/", body: measurement)
+    }
+
+    func getLatestMeasurement() async throws -> BodyMeasurement {
+        try await get("/measurements/latest")
+    }
+
+    func compareMeasurements() async throws -> MeasurementComparison {
+        try await get("/measurements/compare")
+    }
+
+    func calculateBodyFat(waistCm: Double, neckCm: Double, hipsCm: Double? = nil) async throws -> BodyFatCalculation {
+        var query = "/measurements/calculate-body-fat?waist_cm=\(waistCm)&neck_cm=\(neckCm)"
+        if let hips = hipsCm {
+            query += "&hips_cm=\(hips)"
+        }
+        return try await post(query, body: EmptyBody())
+    }
+
+    func deleteMeasurement(id: String) async throws {
+        let _: EmptyResponse = try await delete("/measurements/\(id)")
+    }
+
     // MARK: - Menstrual Cycle Endpoints (Female Users Only)
 
     func logCycleData(_ data: MenstrualLogCreate) async throws -> MenstrualCycleLog {
@@ -530,6 +560,88 @@ final class APIClient {
 
     func getEatingWindowStats(days: Int = 7) async throws -> EatingWindowStats {
         try await get("/circadian/eating-window?days=\(days)")
+    }
+
+    // MARK: - Supplement Endpoints
+
+    func getSupplements(activeOnly: Bool = true) async throws -> [Supplement] {
+        try await get("/supplements?active_only=\(activeOnly)")
+    }
+
+    func createSupplement(_ request: SupplementCreateRequest) async throws -> Supplement {
+        try await post("/supplements", body: request)
+    }
+
+    func updateSupplement(id: String, update: SupplementUpdateRequest) async throws -> Supplement {
+        try await patch("/supplements/\(id)", body: update)
+    }
+
+    func deleteSupplement(id: String) async throws {
+        let _: SuccessResponse = try await delete("/supplements/\(id)")
+    }
+
+    func logSupplement(_ request: SupplementLogRequest) async throws -> SupplementLog {
+        try await post("/supplements/log", body: request)
+    }
+
+    func getTodaySupplementLogs() async throws -> [SupplementLog] {
+        try await get("/supplements/logs/today")
+    }
+
+    func getTodaySupplementSummary() async throws -> TodaySupplementSummary {
+        try await get("/supplements/today")
+    }
+
+    func deleteSupplementLog(id: String) async throws {
+        let _: SuccessResponse = try await delete("/supplements/log/\(id)")
+    }
+
+    func getSupplementHistory(days: Int = 7) async throws -> [SupplementLog] {
+        try await get("/supplements/logs/history?days=\(days)")
+    }
+
+    // MARK: - Blood Work Endpoints
+
+    func getBloodWorkPanels(limit: Int = 10) async throws -> [BloodWorkPanel] {
+        try await get("/blood-work?limit=\(limit)")
+    }
+
+    func getBloodWorkPanel(id: String) async throws -> BloodWorkPanel {
+        try await get("/blood-work/\(id)")
+    }
+
+    func createBloodWorkPanel(_ request: BloodWorkPanelCreate) async throws -> BloodWorkPanel {
+        try await post("/blood-work", body: request)
+    }
+
+    func deleteBloodWorkPanel(id: String) async throws {
+        let _: SuccessResponse = try await delete("/blood-work/\(id)")
+    }
+
+    func getBloodWorkSummary() async throws -> BloodWorkSummary {
+        try await get("/blood-work/latest/summary")
+    }
+
+    func extractBloodWorkOCR(imageBase64: String?, imageUrl: String?, mimeType: String = "image/jpeg") async throws -> BloodWorkOCRResponse {
+        let request = BloodWorkOCRRequest(imageBase64: imageBase64, imageUrl: imageUrl, mimeType: mimeType)
+        return try await post("/blood-work/ocr", body: request)
+    }
+
+    func confirmBloodWorkOCR(_ request: BloodWorkConfirmOCRRequest) async throws -> BloodWorkPanel {
+        try await post("/blood-work/confirm-ocr", body: request)
+    }
+
+    func analyzeBloodWorkPanel(id: String) async throws -> BloodWorkAnalysis {
+        try await post("/blood-work/\(id)/analyze", body: EmptyBody())
+    }
+
+    func applyBloodWorkRecommendations(panelId: String, applySupplements: Bool, applyTargets: Bool) async throws -> ApplyRecommendationsResponse {
+        let request = ApplyRecommendationsRequest(applySupplements: applySupplements, applyTargets: applyTargets)
+        return try await post("/blood-work/\(panelId)/apply-recommendations", body: request)
+    }
+
+    func getBloodWorkTrend(markerKey: String, months: Int = 12) async throws -> BloodWorkTrend {
+        try await get("/blood-work/trends/\(markerKey)?months=\(months)")
     }
 
     // MARK: - Export Endpoints
@@ -678,6 +790,9 @@ struct ProfileCreate: Encodable {
     let goals: [String]?
     let dietStyle: String?
     let allergies: [String]?
+    let injuries: [String]?
+    let medicalConditions: [String]?
+    let preferredIngredients: [String]?
     let equipment: [String]?
     let dailyStepsGoal: Int?
 }
@@ -692,6 +807,9 @@ struct ProfileUpdate: Encodable {
     var goals: [String]?
     var dietStyle: String?
     var allergies: [String]?
+    var injuries: [String]?
+    var medicalConditions: [String]?
+    var preferredIngredients: [String]?
     var onboardingCompleted: Bool?
     // Daily targets
     var dailyCalorieTarget: Int?

@@ -8,14 +8,11 @@ struct MealLoggerSheet: View {
 
     @State private var selectedMealType: MealType = .lunch
     @State private var animateIn = false
-    @State private var showPhotoOptions = false
-    @State private var showBarcodeScanner = false
-    @State private var showQuickAdd = false
 
     let onScanBarcode: () -> Void
     let onQuickAdd: () -> Void
 
-    private let impactHeavy = UIImpactFeedbackGenerator(style: .heavy)
+    private let impactLight = UIImpactFeedbackGenerator(style: .light)
     private let impactMedium = UIImpactFeedbackGenerator(style: .medium)
 
     // Would come from ViewModel
@@ -47,85 +44,50 @@ struct MealLoggerSheet: View {
             case .snack: return .green
             }
         }
-
-        var gradient: [Color] {
-            switch self {
-            case .breakfast: return [.orange, .yellow]
-            case .lunch: return [.yellow, .orange]
-            case .dinner: return [.purple, .pink]
-            case .snack: return [.green, .mint]
-            }
-        }
     }
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                // Background gradient
-                LinearGradient(
-                    colors: [
-                        selectedMealType.color.opacity(0.1),
-                        Color(.systemGroupedBackground)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea()
-                .animation(.easeInOut(duration: 0.3), value: selectedMealType)
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Macros Remaining Header
+                    macrosHeader
+                        .opacity(animateIn ? 1 : 0)
+                        .offset(y: animateIn ? 0 : -10)
 
-                ScrollView {
-                    VStack(spacing: 24) {
-                        // Macros Remaining Header
-                        macrosHeader
-                            .opacity(animateIn ? 1 : 0)
-                            .offset(y: animateIn ? 0 : -20)
+                    // Meal Type Selection
+                    mealTypeSection
+                        .opacity(animateIn ? 1 : 0)
+                        .offset(y: animateIn ? 0 : 10)
 
-                        // Meal Type Selection
-                        mealTypeSection
-                            .opacity(animateIn ? 1 : 0)
-                            .offset(y: animateIn ? 0 : 20)
+                    // Logging Options
+                    loggingOptionsSection
+                        .opacity(animateIn ? 1 : 0)
+                        .offset(y: animateIn ? 0 : 15)
 
-                        // Logging Options
-                        loggingOptionsSection
-                            .opacity(animateIn ? 1 : 0)
-                            .offset(y: animateIn ? 0 : 30)
-
-                        // Describe with AI Button
-                        describeWithAIButton
-                            .opacity(animateIn ? 1 : 0)
-                            .offset(y: animateIn ? 0 : 40)
-                    }
-                    .padding(20)
+                    // AI Chat Button
+                    aiChatButton
+                        .opacity(animateIn ? 1 : 0)
+                        .offset(y: animateIn ? 0 : 20)
                 }
+                .padding(20)
             }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("Log Meal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        impactMedium.impactOccurred()
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
                         dismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title2)
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundColor(.secondary)
                     }
-                }
-
-                ToolbarItem(placement: .principal) {
-                    Text("Log Meal")
-                        .font(.headline)
-                        .fontWeight(.bold)
                 }
             }
             .onAppear {
+                impactLight.prepare()
                 impactMedium.prepare()
-                impactHeavy.prepare()
-
-                // Set default meal type based on time of day
                 selectedMealType = suggestedMealType()
 
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.1)) {
+                withAnimation(.easeOut(duration: 0.3).delay(0.1)) {
                     animateIn = true
                 }
             }
@@ -137,24 +99,22 @@ struct MealLoggerSheet: View {
     // MARK: - Macros Remaining Header
 
     private var macrosHeader: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 16) {
             // Calories remaining
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Calories Remaining")
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundColor(.secondary)
 
-                    Text("\(caloriesRemaining)")
-                        .font(.title)
-                        .fontWeight(.bold)
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [.green, .mint],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text("\(caloriesRemaining)")
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+
+                        Text("cal")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
                 }
 
                 Spacer()
@@ -163,51 +123,47 @@ struct MealLoggerSheet: View {
                 ZStack {
                     Circle()
                         .stroke(Color.green.opacity(0.2), lineWidth: 6)
-                        .frame(width: 50, height: 50)
+                        .frame(width: 56, height: 56)
 
                     Circle()
-                        .trim(from: 0, to: 0.6) // Would be calculated
+                        .trim(from: 0, to: 0.6)
                         .stroke(Color.green, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                        .frame(width: 50, height: 50)
+                        .frame(width: 56, height: 56)
                         .rotationEffect(.degrees(-90))
 
                     Text("60%")
-                        .font(.caption2)
-                        .fontWeight(.bold)
+                        .font(.caption.weight(.semibold))
                 }
             }
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color(.systemBackground))
-                    .shadow(color: .black.opacity(0.05), radius: 8, y: 4)
-            )
 
             // Macros row
             HStack(spacing: 12) {
-                MacroRemainingCard(name: "Protein", value: proteinRemaining, unit: "g", color: .blue)
-                MacroRemainingCard(name: "Carbs", value: carbsRemaining, unit: "g", color: .orange)
-                MacroRemainingCard(name: "Fat", value: fatRemaining, unit: "g", color: .purple)
+                MacroCard(name: "Protein", value: proteinRemaining, unit: "g", color: .blue)
+                MacroCard(name: "Carbs", value: carbsRemaining, unit: "g", color: .orange)
+                MacroCard(name: "Fat", value: fatRemaining, unit: "g", color: .purple)
             }
         }
+        .padding()
+        .background(Color(.systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
     // MARK: - Meal Type Section
 
     private var mealTypeSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("What meal?")
-                .font(.headline)
-                .fontWeight(.semibold)
+            Text("Meal Type")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
 
             HStack(spacing: 10) {
                 ForEach(MealType.allCases, id: \.self) { type in
-                    MealTypeButton(
+                    MealLoggerTypeButton(
                         type: type,
                         isSelected: selectedMealType == type
                     ) {
-                        impactMedium.impactOccurred()
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        impactLight.impactOccurred()
+                        withAnimation(.easeOut(duration: 0.2)) {
                             selectedMealType = type
                         }
                     }
@@ -220,29 +176,25 @@ struct MealLoggerSheet: View {
 
     private var loggingOptionsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("How to log?")
-                .font(.headline)
-                .fontWeight(.semibold)
+            Text("How to Log")
+                .font(.subheadline)
+                .foregroundColor(.secondary)
 
-            VStack(spacing: 10) {
-                // Photo option
-                LoggingOptionRow(
+            VStack(spacing: 8) {
+                LogOptionRow(
                     title: "Take Photo",
                     subtitle: "AI identifies your food",
                     icon: "camera.fill",
-                    color: .blue,
-                    badge: "AI"
+                    color: .blue
                 ) {
                     takePhoto()
                 }
 
-                // Barcode scan
-                LoggingOptionRow(
+                LogOptionRow(
                     title: "Scan Barcode",
                     subtitle: "For packaged foods",
                     icon: "barcode.viewfinder",
-                    color: .purple,
-                    badge: nil
+                    color: .purple
                 ) {
                     impactMedium.impactOccurred()
                     dismiss()
@@ -251,13 +203,11 @@ struct MealLoggerSheet: View {
                     }
                 }
 
-                // Quick add
-                LoggingOptionRow(
+                LogOptionRow(
                     title: "Quick Add Calories",
                     subtitle: "Enter calories manually",
                     icon: "plus.circle.fill",
-                    color: .orange,
-                    badge: nil
+                    color: .orange
                 ) {
                     impactMedium.impactOccurred()
                     dismiss()
@@ -266,13 +216,11 @@ struct MealLoggerSheet: View {
                     }
                 }
 
-                // Search food database
-                LoggingOptionRow(
+                LogOptionRow(
                     title: "Search Foods",
                     subtitle: "Browse food database",
                     icon: "magnifyingglass",
-                    color: .green,
-                    badge: nil
+                    color: .green
                 ) {
                     searchFoods()
                 }
@@ -280,11 +228,11 @@ struct MealLoggerSheet: View {
         }
     }
 
-    // MARK: - Describe with AI Button
+    // MARK: - AI Chat Button
 
-    private var describeWithAIButton: some View {
+    private var aiChatButton: some View {
         Button {
-            impactHeavy.impactOccurred()
+            impactMedium.impactOccurred()
             dismiss()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -294,16 +242,31 @@ struct MealLoggerSheet: View {
             }
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: "message.fill")
-                    .font(.title3)
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [.blue, .purple],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 44, height: 44)
+
+                    Image(systemName: "message.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.white)
+                }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Describe Your Meal")
-                        .font(.headline)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
 
-                    Text("Tell the AI what you ate")
+                    Text("Tell Reppy what you ate")
                         .font(.caption)
-                        .opacity(0.8)
+                        .foregroundColor(.secondary)
                 }
 
                 Spacer()
@@ -313,26 +276,19 @@ struct MealLoggerSheet: View {
                         .font(.caption)
                     Text("Voice")
                         .font(.caption)
-                        .fontWeight(.bold)
+                        .fontWeight(.medium)
                 }
+                .foregroundColor(.blue)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(Color.white.opacity(0.2))
-                .cornerRadius(20)
+                .background(Color.blue.opacity(0.1))
+                .clipShape(Capsule())
             }
-            .foregroundColor(.white)
-            .padding()
-            .background(
-                LinearGradient(
-                    colors: selectedMealType.gradient,
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
-            .cornerRadius(16)
-            .shadow(color: selectedMealType.color.opacity(0.4), radius: 10, y: 5)
+            .padding(16)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
         }
-        .buttonStyle(BounceButtonStyle())
+        .buttonStyle(.plain)
     }
 
     // MARK: - Actions
@@ -370,9 +326,9 @@ struct MealLoggerSheet: View {
     }
 }
 
-// MARK: - Macro Remaining Card
+// MARK: - Macro Card
 
-struct MacroRemainingCard: View {
+private struct MacroCard: View {
     let name: String
     let value: Double
     let unit: String
@@ -382,25 +338,23 @@ struct MacroRemainingCard: View {
         VStack(spacing: 4) {
             Text("\(Int(value))\(unit)")
                 .font(.headline)
-                .fontWeight(.bold)
+                .fontWeight(.semibold)
                 .foregroundColor(color)
 
             Text(name)
-                .font(.caption2)
+                .font(.caption)
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(color.opacity(0.1))
-        )
+        .background(color.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }
 
 // MARK: - Meal Type Button
 
-struct MealTypeButton: View {
+private struct MealLoggerTypeButton: View {
     let type: MealLoggerSheet.MealType
     let isSelected: Bool
     let action: () -> Void
@@ -408,87 +362,59 @@ struct MealTypeButton: View {
     var body: some View {
         Button(action: action) {
             VStack(spacing: 6) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            isSelected
-                                ? LinearGradient(colors: type.gradient, startPoint: .topLeading, endPoint: .bottomTrailing)
-                                : LinearGradient(colors: [type.color.opacity(0.15)], startPoint: .top, endPoint: .bottom)
-                        )
-                        .frame(width: 44, height: 44)
-
-                    Image(systemName: type.icon)
-                        .font(.system(size: 18))
-                        .foregroundColor(isSelected ? .white : type.color)
-                }
-                .scaleEffect(isSelected ? 1.1 : 1.0)
+                Image(systemName: type.icon)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(isSelected ? .white : type.color)
+                    .frame(width: 40, height: 40)
+                    .background(
+                        Circle()
+                            .fill(isSelected ? type.color : type.color.opacity(0.15))
+                    )
 
                 Text(type.rawValue)
-                    .font(.caption2)
+                    .font(.caption)
                     .fontWeight(isSelected ? .semibold : .regular)
                     .foregroundColor(isSelected ? type.color : .primary)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
+            .padding(.vertical, 12)
             .background(
                 RoundedRectangle(cornerRadius: 12)
                     .fill(isSelected ? type.color.opacity(0.1) : Color(.secondarySystemBackground))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? type.color : Color.clear, lineWidth: 2)
+                    .stroke(isSelected ? type.color.opacity(0.5) : Color.clear, lineWidth: 1.5)
             )
         }
-        .buttonStyle(BounceButtonStyle())
+        .buttonStyle(.plain)
     }
 }
 
-// MARK: - Logging Option Row
+// MARK: - Log Option Row
 
-struct LoggingOptionRow: View {
+private struct LogOptionRow: View {
     let title: String
     let subtitle: String
     let icon: String
     let color: Color
-    let badge: String?
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 14) {
-                Circle()
-                    .fill(color.opacity(0.15))
-                    .frame(width: 44, height: 44)
-                    .overlay(
-                        Image(systemName: icon)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(color)
-                    )
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(color)
+                    .frame(width: 40, height: 40)
+                    .background(color.opacity(0.12))
+                    .clipShape(Circle())
 
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(title)
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.primary)
-
-                        if let badge = badge {
-                            Text(badge)
-                                .font(.caption2)
-                                .fontWeight(.bold)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(
-                                    LinearGradient(
-                                        colors: [.purple, .blue],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .cornerRadius(4)
-                        }
-                    }
+                    Text(title)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
 
                     Text(subtitle)
                         .font(.caption)
@@ -499,14 +425,13 @@ struct LoggingOptionRow: View {
 
                 Image(systemName: "chevron.right")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Color(.tertiaryLabel))
             }
-            .padding(12)
+            .padding(14)
             .background(Color(.systemBackground))
-            .cornerRadius(14)
-            .shadow(color: .black.opacity(0.03), radius: 4, y: 2)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
         }
-        .buttonStyle(BounceButtonStyle())
+        .buttonStyle(.plain)
     }
 }
 

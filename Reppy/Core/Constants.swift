@@ -5,13 +5,8 @@ enum Constants {
     /// API configuration
     enum API {
         #if DEBUG
-        // Use localhost for simulator, ngrok for physical device
-        #if targetEnvironment(simulator)
-        static let baseURL = "http://localhost:8000/api/v1"
-        #else
-        // ngrok tunnel for device testing - update this URL when ngrok restarts
-        static let baseURL = "https://uncontagiously-unplastic-sabrina.ngrok-free.dev/api/v1"
-        #endif
+        // Use Render backend for development
+        static let baseURL = "https://reppy-api.onrender.com/api/v1"
         #else
         static let baseURL = "https://reppy-api.onrender.com/api/v1"
         #endif

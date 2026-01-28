@@ -10,6 +10,7 @@ struct ChatMessage: Identifiable, Equatable {
     var toolCalls: [ToolCallResult]?
     var pendingConfirmation: PendingConfirmation?
     var attachedImage: UIImage?
+    var planPreview: PlanPreview?
 
     init(
         id: String = UUID().uuidString,
@@ -18,7 +19,8 @@ struct ChatMessage: Identifiable, Equatable {
         timestamp: Date = Date(),
         toolCalls: [ToolCallResult]? = nil,
         pendingConfirmation: PendingConfirmation? = nil,
-        attachedImage: UIImage? = nil
+        attachedImage: UIImage? = nil,
+        planPreview: PlanPreview? = nil
     ) {
         self.id = id
         self.role = role
@@ -27,6 +29,7 @@ struct ChatMessage: Identifiable, Equatable {
         self.toolCalls = toolCalls
         self.pendingConfirmation = pendingConfirmation
         self.attachedImage = attachedImage
+        self.planPreview = planPreview
     }
 
     static func == (lhs: ChatMessage, rhs: ChatMessage) -> Bool {
@@ -35,7 +38,115 @@ struct ChatMessage: Identifiable, Equatable {
         lhs.content == rhs.content &&
         lhs.timestamp == rhs.timestamp &&
         lhs.toolCalls == rhs.toolCalls &&
-        lhs.pendingConfirmation == rhs.pendingConfirmation
+        lhs.pendingConfirmation == rhs.pendingConfirmation &&
+        lhs.planPreview == rhs.planPreview
+    }
+}
+
+// MARK: - Plan Preview Models
+
+/// Preview data for a meal or workout plan displayed in chat
+struct PlanPreview: Equatable, Identifiable {
+    let id: String
+    let type: PlanType
+    let name: String
+    let days: [PlanDayPreview]
+    let totalCalories: Int?
+    let totalProtein: Double?
+    let durationDays: Int
+    let suggestionId: String?
+    let savedPlanId: String?  // The plan is already saved if this is set
+
+    var totalMeals: Int {
+        days.reduce(0) { $0 + $1.items.count }
+    }
+
+    var totalExercises: Int {
+        days.reduce(0) { $0 + $1.items.count }
+    }
+
+    static func == (lhs: PlanPreview, rhs: PlanPreview) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
+/// A single day in the plan preview
+struct PlanDayPreview: Identifiable, Equatable {
+    let id: String
+    let dayNumber: Int
+    let dayName: String
+    let items: [PlanItemPreview]
+    let totalCalories: Int?
+    let totalProtein: Double?
+
+    init(
+        id: String = UUID().uuidString,
+        dayNumber: Int,
+        dayName: String,
+        items: [PlanItemPreview],
+        totalCalories: Int? = nil,
+        totalProtein: Double? = nil
+    ) {
+        self.id = id
+        self.dayNumber = dayNumber
+        self.dayName = dayName
+        self.items = items
+        self.totalCalories = totalCalories
+        self.totalProtein = totalProtein
+    }
+}
+
+/// A single item (meal or exercise) in a day
+struct PlanItemPreview: Identifiable, Equatable {
+    let id: String
+    let itemType: String  // breakfast, lunch, dinner, snack OR exercise name
+    let name: String
+    let calories: Int?
+    let protein: Double?
+    let sets: Int?
+    let reps: String?
+    let duration: Int?  // minutes for exercises
+
+    init(
+        id: String = UUID().uuidString,
+        itemType: String,
+        name: String,
+        calories: Int? = nil,
+        protein: Double? = nil,
+        sets: Int? = nil,
+        reps: String? = nil,
+        duration: Int? = nil
+    ) {
+        self.id = id
+        self.itemType = itemType
+        self.name = name
+        self.calories = calories
+        self.protein = protein
+        self.sets = sets
+        self.reps = reps
+        self.duration = duration
+    }
+
+    /// Icon for meal type
+    var mealIcon: String {
+        switch itemType.lowercased() {
+        case "breakfast": return "sunrise.fill"
+        case "lunch": return "sun.max.fill"
+        case "dinner": return "moon.fill"
+        case "snack": return "leaf.fill"
+        default: return "fork.knife"
+        }
+    }
+
+    /// Color for meal type
+    var mealColor: String {
+        switch itemType.lowercased() {
+        case "breakfast": return "orange"
+        case "lunch": return "yellow"
+        case "dinner": return "purple"
+        case "snack": return "green"
+        default: return "gray"
+        }
     }
 }
 

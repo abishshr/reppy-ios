@@ -135,10 +135,12 @@ struct MainTabView: View {
         .onChange(of: appState.selectedTab) { oldValue, newValue in
             // Handle pending chat message when switching to chat tab
             if newValue == 1, let message = appState.pendingChatMessage {
+                let displayMessage = appState.pendingChatDisplayMessage
                 appState.pendingChatMessage = nil
+                appState.pendingChatDisplayMessage = nil
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     Task {
-                        await chatViewModel.sendMessage(message)
+                        await chatViewModel.sendMessage(message, displayText: displayMessage)
                     }
                 }
             }

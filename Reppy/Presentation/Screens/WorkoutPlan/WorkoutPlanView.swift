@@ -102,12 +102,12 @@ struct WorkoutPlanView: View {
             }
         }
         .sheet(isPresented: $showingCreateSheet) {
-            CreateWorkoutPlanSheet { prompt in
-                dismiss()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    appState.navigateToChatWith(message: prompt)
-                }
-            }
+            UnifiedPlanCreationSheet(
+                planType: .workout,
+                apiClient: DependencyContainer.shared.apiClient,
+                chatRepository: DependencyContainer.shared.chatRepository,
+                appState: appState
+            )
         }
     }
 

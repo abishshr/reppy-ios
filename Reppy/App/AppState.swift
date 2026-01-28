@@ -16,6 +16,7 @@ final class AppState: ObservableObject {
 
     @Published var selectedTab: Int = 0
     @Published var pendingChatMessage: String?
+    @Published var pendingChatDisplayMessage: String?  // Simplified message shown to user
 
     // MARK: - Services
 
@@ -85,8 +86,9 @@ final class AppState: ObservableObject {
 
     // MARK: - Navigation Helpers
 
-    func navigateToChatWith(message: String) {
+    func navigateToChatWith(message: String, displayMessage: String? = nil) {
         pendingChatMessage = message
+        pendingChatDisplayMessage = displayMessage
         selectedTab = 1  // Chat tab
     }
 }

@@ -99,12 +99,12 @@ struct MealPlanView: View {
                 GroceryListsSheet(viewModel: viewModel)
             }
             .sheet(isPresented: $showingCreateSheet) {
-                CreateMealPlanSheet { prompt in
-                    dismiss()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        appState.navigateToChatWith(message: prompt)
-                    }
-                }
+                UnifiedPlanCreationSheet(
+                    planType: .meal,
+                    apiClient: DependencyContainer.shared.apiClient,
+                    chatRepository: DependencyContainer.shared.chatRepository,
+                    appState: appState
+                )
             }
             .sheet(item: $selectedMeal) { meal in
                 MealDetailSheet(meal: meal)
