@@ -12,8 +12,9 @@ platform :ios do
   # App Store Connect API Key
   def api_key
     # Load from JSON file (same file used by Match)
+    key_file = File.join(File.dirname(__FILE__), "app_store_connect_api_key.json")
     app_store_connect_api_key(
-      key_filepath: "./fastlane/app_store_connect_api_key.json"
+      key_filepath: key_file
     )
   end
 
