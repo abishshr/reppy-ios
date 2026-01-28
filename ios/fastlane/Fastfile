@@ -26,8 +26,7 @@ platform :ios do
     match_options = {
       type: "appstore",
       readonly: is_ci,
-      app_identifier: ["com.abish.reppy", "com.abish.reppy.widget"],
-      api_key: false  # Explicitly disable API key usage for Match
+      app_identifier: ["com.abish.reppy", "com.abish.reppy.widget"]
     }
 
     # Add keychain configuration for CI environment
@@ -36,7 +35,18 @@ platform :ios do
       match_options[:keychain_password] = ENV["KEYCHAIN_PASSWORD"]
     end
 
+    # Temporarily unset API key env vars for Match (it doesn't need them)
+    # Store the values to restore later
+    api_key_id = ENV.delete("APP_STORE_CONNECT_API_KEY_ID")
+    api_issuer_id = ENV.delete("APP_STORE_CONNECT_API_ISSUER_ID")
+    api_key_content = ENV.delete("APP_STORE_CONNECT_API_KEY")
+
     match(match_options)
+
+    # Restore API key env vars for upload_to_testflight
+    ENV["APP_STORE_CONNECT_API_KEY_ID"] = api_key_id if api_key_id
+    ENV["APP_STORE_CONNECT_API_ISSUER_ID"] = api_issuer_id if api_issuer_id
+    ENV["APP_STORE_CONNECT_API_KEY"] = api_key_content if api_key_content
 
     # Increment build number
     increment_build_number(
