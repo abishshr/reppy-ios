@@ -26,7 +26,8 @@ platform :ios do
     match_options = {
       type: "appstore",
       readonly: is_ci,
-      app_identifier: ["com.abish.reppy", "com.abish.reppy.widget"]
+      app_identifier: ["com.abish.reppy", "com.abish.reppy.widget"],
+      api_key: false  # Explicitly disable API key usage for Match
     }
 
     # Add keychain configuration for CI environment
