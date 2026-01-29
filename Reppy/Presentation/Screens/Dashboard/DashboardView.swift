@@ -26,8 +26,10 @@ struct DashboardView: View {
                 ScrollView {
                     if isReady {
                         content
+                            .id("content")
                     } else {
                         skeletonContent
+                            .id("skeleton")
                     }
                 }
                 .background(Color(.systemGroupedBackground))
@@ -504,33 +506,11 @@ struct SkeletonView: View {
     }
 }
 
-// Shimmer effect
+// Shimmer effect disabled to prevent scroll issues
 struct ShimmerModifier: ViewModifier {
-    @State private var phase: CGFloat = 0
-
     func body(content: Content) -> some View {
         content
-            .overlay(
-                GeometryReader { geometry in
-                    LinearGradient(
-                        colors: [
-                            Color.clear,
-                            Color.white.opacity(0.3),
-                            Color.clear
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                    .frame(width: geometry.size.width * 2)
-                    .offset(x: -geometry.size.width + (geometry.size.width * 2 * phase))
-                }
-            )
-            .mask(content)
-            .onAppear {
-                withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-                    phase = 1
-                }
-            }
+            .opacity(0.6) // Simple opacity instead of shimmer animation
     }
 }
 

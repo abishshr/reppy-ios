@@ -42,7 +42,21 @@ final class AuthViewModel: ObservableObject {
 
                     appState.signIn(with: response)
                 } catch {
-                    errorMessage = error.localizedDescription
+                    // Provide user-friendly error messages
+                    if let urlError = error as? URLError {
+                        switch urlError.code {
+                        case .timedOut:
+                            errorMessage = "Server is starting up. Please try signing in again."
+                        case .cannotConnectToHost, .networkConnectionLost:
+                            errorMessage = "Cannot reach server. Please check your internet connection and try again."
+                        default:
+                            errorMessage = "Connection error. Please try again."
+                        }
+                    } else if error.localizedDescription.contains("503") {
+                        errorMessage = "Server is waking up. Please try signing in again in a moment."
+                    } else {
+                        errorMessage = error.localizedDescription
+                    }
                 }
 
                 isLoading = false
