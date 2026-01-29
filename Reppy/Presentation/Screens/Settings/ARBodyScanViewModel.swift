@@ -342,9 +342,22 @@ final class ARBodyScanViewModel: NSObject, ObservableObject {
             guard let self = self else { return }
             switch self.currentMode {
             case .positioningFront:
-                self.audioGuidance.speak("Ready. Tap to capture", force: true)
+                self.audioGuidance.speak("Perfect. Hold still", force: true)
             case .positioningSide:
-                self.audioGuidance.speak("Ready. Tap to capture", force: true)
+                self.audioGuidance.speak("Perfect. Hold still", force: true)
+            default:
+                break
+            }
+        }
+
+        // Auto-start countdown after alignment — no tap needed
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self = self, self.isBodyAligned else { return }
+            switch self.currentMode {
+            case .positioningFront:
+                self.startCountdown(for: .capturingFront)
+            case .positioningSide:
+                self.startCountdown(for: .capturingSide)
             default:
                 break
             }
@@ -390,7 +403,7 @@ final class ARBodyScanViewModel: NSObject, ObservableObject {
 
             case .positioningFront:
                 if self.isBodyAligned {
-                    self.audioGuidance.speak("Perfect. Tap to capture")
+                    self.audioGuidance.speak("Perfect. Hold still")
                 } else {
                     self.audioGuidance.speak("Face the camera")
                 }
@@ -406,7 +419,7 @@ final class ARBodyScanViewModel: NSObject, ObservableObject {
 
             case .positioningSide:
                 if self.isBodyAligned {
-                    self.audioGuidance.speak("Perfect. Tap to capture")
+                    self.audioGuidance.speak("Perfect. Hold still")
                 } else {
                     self.audioGuidance.speak("Show your side")
                 }

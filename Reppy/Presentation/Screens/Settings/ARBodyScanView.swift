@@ -102,17 +102,7 @@ struct ARBodyScanView: View {
                 }
             }
 
-            // Capture button (when ready)
-            if viewModel.showCaptureButton {
-                VStack {
-                    Spacer()
-                    CaptureButton(
-                        isReady: viewModel.isBodyAligned,
-                        onTap: viewModel.capture
-                    )
-                    .padding(.bottom, 50)
-                }
-            }
+            // Auto-capture: countdown starts automatically once body is aligned
         }
         .onAppear {
             viewModel.userHeightCm = appState.userProfile?.heightCm ?? 170
