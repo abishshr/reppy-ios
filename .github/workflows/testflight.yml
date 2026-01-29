@@ -27,6 +27,17 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Auto-increment Build Number
+        working-directory: ios
+        run: |
+          # Read current build number
+          CURRENT=$(grep "CURRENT_PROJECT_VERSION:" project.yml | sed 's/.*: "\(.*\)"/\1/')
+          # Increment by 1
+          NEW=$((CURRENT + 1))
+          # Update project.yml
+          sed -i '' "s/CURRENT_PROJECT_VERSION: \"$CURRENT\"/CURRENT_PROJECT_VERSION: \"$NEW\"/" project.yml
+          echo "Build number incremented from $CURRENT to $NEW"
+
       - name: Generate Xcode Project
         working-directory: ios
         run: xcodegen generate
