@@ -29,6 +29,7 @@ struct ChatViewContent: View {
     @State private var selectedPhotoItem: PhotosPickerItem?
     @FocusState private var isTextFieldFocused: Bool
     @State private var isReady = false
+    @State private var hasHandledCameraCapture = false  // Prevent double capture handling
 
     enum CameraMode {
         case food
@@ -86,13 +87,26 @@ struct ChatViewContent: View {
             }
             .onChange(of: viewModel.selectedImage) { _, newImage in
                 // When camera returns with image, auto-send appropriate message
-                if newImage != nil && showingCamera == false {
+                // Only handle for gallery photos (showingCamera is false)
+                // Camera photos are handled by the showingCamera onChange
+                if newImage != nil && showingCamera == false && !hasHandledCameraCapture {
+                    hasHandledCameraCapture = true
                     handleCameraCapture()
+                    // Reset flag after a short delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        hasHandledCameraCapture = false
+                    }
                 }
             }
             .onChange(of: showingCamera) { _, isShowing in
-                if !isShowing && viewModel.selectedImage != nil {
+                // Only handle when camera dismisses with an image
+                if !isShowing && viewModel.selectedImage != nil && !hasHandledCameraCapture {
+                    hasHandledCameraCapture = true
                     handleCameraCapture()
+                    // Reset flag after a short delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        hasHandledCameraCapture = false
+                    }
                 }
             }
             .onChange(of: selectedPhotoItem) { _, newItem in
