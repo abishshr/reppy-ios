@@ -990,7 +990,7 @@ struct GroceryListDetailSheet: View {
 
                                     Spacer()
 
-                                    Text("\(item.quantity, specifier: "%.1f") \(item.unit)")
+                                    Text("\(item.quantity.cleanQuantity) \(item.unit)")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
